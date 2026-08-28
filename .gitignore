@@ -1,0 +1,15 @@
+# 反编译的游戏代码 —— 绝不能公开
+decompiled/
+
+# 本地构建产物
+bin/
+obj/
+*.user
+
+# 本地工具文件（不入库）
+*.zip
+*.bak
+release_pkg/
+game_capture.png
+LogOutput.log
+.zcode/
