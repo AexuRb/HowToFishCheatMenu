@@ -1,86 +1,74 @@
-# How to Fish 作弊菜单 Mod
+# HowToFishCheatMenu — 鱼力全开作弊菜单
 
-[How to Fish](https://store.steampowered.com/)（Dazed Games，Unity 6000.4.4f1 Mono）的 BepInEx 作弊 + 便利功能插件。
+《How to Fish（鱼力全开）》的 BepInEx 作弊菜单，适配 **2026-09-30 游戏更新**（新增赌场 / 欧元 / 小岛版本，Unity 6000.4.4f1 Mono）。
 
-## 菜单结构（F1，v1.2 四分类页）
+> v2.1.0：修复生成器闪光/死亡失效、轮盘视觉与结果一致（平滑引导）、菜单输入穿透（点菜单不再误触下层 UI 或开枪/移动，ESC 仍可用，暂停界面可与菜单同时使用）；新增无后座、极速射击、图鉴全收集、UI 缩放滑条。
+> v2.0.0：UI 全面重绘（暗色圆角主题、可拖动、可缩放、六页签、生成器搜索框、主机功能角标），新增赌场控制、双货币、自动收线原型等一大批功能。
 
-| 页签 | 内容 |
+## 功能一览
+
+**热键**（可在 `BepInEx/config/` 里改键）
+
+| 键 | 功能 |
 |---|---|
-| **玩家** | 内置作弊、上帝模式、一击必杀、无限弹匣、秒咬钩、移速倍率、跳跃倍率、加钱 |
-| **世界** | 上一岛/下一岛、秒杀 Boss、击杀全部活物、清空图鉴击杀记录、刷物品（全高列表） |
-| **显示** | 鱼群雷达、雷达名字、弹药显示、性能监视 |
-| **杂项** | 解锁全部皮肤、解锁全部成就、结束本局 |
+| F1 | 开关作弊菜单 |
+| F2 | 上帝模式 |
+| F3 | 秒咬钩 |
+| F4 | 循环移速倍率 |
+| F5 | 加钱（按菜单当前货币） |
+| F6 | 鱼群雷达 |
+| F7 | 性能监视 |
+| F8 | 无限弹匣 |
 
-### 各功能说明
+**菜单六页签**
 
-| 功能 | 说明 | 热键 |
-|---|---|---|
-| 内置作弊 | 打开游戏自带作弊通道（`ClientSettings.CheatsEnabled`），启动时自动开启 | — |
-| 上帝模式 | 无敌 + 免饥饿（游戏原生实现，服务器权威） | F2 |
-| 秒咬钩 | 鱼饵入水立即咬钩。prefix `CreatureManager.FindFishForBait`（服务器网络 tick 判定），写零 `<RandomizedCatchTime>`。**鱼饵需沉到水下约 2.5m**（游戏原判定） | F3 |
-| 移速倍率 | 1 / 1.5 / 2 / 3 / 5 倍循环（临时放大 `_walkSpeed`/`_sprintSpeed`，游泳同样生效；有平滑过渡） | F4 |
-| 加钱 | 默认 +10000（可在配置改金额） | F5 |
-| 跳跃倍率 | 1 / 2 / 3 / 5 倍循环（Jump 后缩放上升速度） | 菜单内 |
-| 无限弹匣 | 开枪后弹匣立即回满（postfix `Weapon.Shoot`）。弹药是客户端模拟的，持枪者本地无限有效 | F8 |
-| 刷物品 | 物品总表（**本地化中文名**，重名变体带 prefab 后缀）一键生成到准星前方（需主机） | 世界页 |
-| 鱼群雷达 | 屏幕标记所有存活生物：金色=闪光、红色=Boss、白色=普通；名字为**游戏本地化中文名**（F6） | F6 |
-| 弹药 HUD | 手持远程武器时右下角半透明底框大字显示 `当前弹 / 弹匣`：白=充足、黄=≤30%、红=空仓提示 [R]；切拳自动隐藏 | 显示页 |
-| 性能监视器 | FPS + Mono GC 堆 + GC0 次数，1Hz 刷新（F7） | F7 |
-| 击杀全部活物 | 遍历 `_aliveCreatures` 逐只 `LocalHit(999999)`（与 /killboss 同路径，服务器权威）；尸体留世界，刷怪点约 10 秒自动补齐 | 世界页 |
-| 清空图鉴击杀记录 | 即游戏原 `/resetallcreatures`（只影响图鉴，不碰活物） | 世界页 |
+- **玩家**：内置作弊开关、上帝模式、一击必杀、无限弹匣、**无后座**、**极速射击**、移速/跳跃倍率、永不饥饿（主机）、双货币（美元/欧元）加钱与精确设定余额
+- **世界**：上/下一岛、随机小岛、指定岛传送（主机）、秒杀 Boss、击杀全部活物、清空图鉴、**图鉴全收集**、**全能生成器**——任意物品与生物（◆ 标记），支持 prefab 名搜索，可勾选闪光变体/生成即死亡
+- **赌场**：轮盘必胜（球会平滑滚进下注色槽位，视觉与开奖一致）、老虎机必出传说皮肤（拉杆前开启）
+- **钓鱼**：秒咬钩、**自动收线**（钩上有鱼才收线）、满重量渔获（开启后生成的鱼都是 1.75 倍最大体重）
+- **显示**：鱼群雷达（名字/价值显示）、物品雷达（青色点）、弹药 HUD、性能监视、**界面缩放滑条**（实时生效）
+- **杂项**：难度切换（简单/默认/困难）、友方伤害、免费购物、卖鱼价值倍率（x1–x10）、满状态（血量/饱食/毒/火）、解锁全部皮肤、解锁/锁定全部成就、结束本局
 
-所有键位和参数都在 `BepInEx/config/com.htf.cheatmenu.cfg` 里改。
+## 主机 / 客户端权限
 
-## 多人说明
+游戏是服务器权威的（FishNet）。菜单标题栏右侧显示当前身份（主机/客户端），仅主机可用的功能带 `[主机]` 角标，客户端身份时自动置灰：
 
-金钱、刷物品、上帝模式（饥饿 tick）、皮肤解锁由服务器权威 —— **只有当你是主机（或单机）时生效**，以客户端身份点击会收到聊天提示"该功能只有主机可用"。移速/跳跃/秒咬钩/雷达/无限弹匣/弹药 HUD 是本地效果。击杀全部活物以本地玩家为伤害来源，客户端发送 ServerRpc 亦可生效。
+- **仅主机**：金钱、生成器、皮肤/成就/图鉴、赌场控制、难度/友伤/免费购物、卖鱼倍率、满重量、永不饥饿、满状态、Boss/清场、岛屿传送
+- **客户端本地**：移速/跳跃倍率、秒咬钩、无限弹匣、雷达/物品雷达/弹药 HUD/性能监视、自动收线
 
 ## 安装
 
-**方式一（推荐）：** 到 [Releases](../../releases) 下载 `HowToFishCheatMenu-1.2.0.zip`，解压到游戏根目录（`How to Fish.exe` 所在目录），通过 Steam 启动游戏，按 F1 即可。压缩包已内置 BepInEx 5.4.23.2 和修复 Unity 6 崩溃的 doorstop 4.5 代理。
+**推荐**：下载 Release 里的 `HowToFishCheatMenu-2.1.0.zip`，解压到游戏根目录（`How to Fish.exe` 旁边），从 **Steam 客户端**启动游戏，按 F1。
 
-**方式二（已装 BepInEx）：** 只需把 `HowToFishCheatMenu.dll` 放进 `BepInEx/plugins/`。
+**已有 BepInEx**：把 `HowToFishCheatMenu.dll` 放进 `BepInEx/plugins/` 即可。
 
-游戏目录 = `C:\Program Files (x86)\Steam\steamapps\common\How to Fish\How to Fish`
+### 重要
 
-> ⚠️ 本游戏是 Unity 6 构建，BepInEx 5.4.23.2 **自带**的 winhttp 代理（doorstop 4.0）没转发新版 WinHTTP 导出函数，游戏启动时会原生崩溃（`WinHttpWriteProxySettings`）。必须用 **doorstop 4.5.0** 替换（Releases 压缩包内已含）。
->
-> ⚠️ 游戏必须从 Steam 客户端启动（有 Steam DRM 校验）。
+- 本包用 **doorstop 4.5** 的 `winhttp.dll` 代理。Unity 6 下用旧版 doorstop（4.0）会因 `WinHttpWriteProxySettings` 原生崩溃，**不要**用别的 winhttp 替换本包里的。
+- 必须通过 **Steam 客户端**启动（有 DRM 校验），直接双击 exe 会失败。
+- 更新游戏版本后若菜单异常，先看 `BepInEx/LogOutput.log`。
 
 ## 从源码构建
 
-```bash
-cd HowToFishCheatMenu
-dotnet build -c Release   # 编译成功后自动复制到游戏 plugins 目录
-```
-
-需要 .NET SDK（项目用 `Microsoft.NETFramework.ReferenceAssemblies`，无需装 472 Targeting Pack）。游戏 DLL 引用路径写在 csproj 的 `GameDir` 属性里。Harmony 补丁注册必须用 `PatchAll(Assembly)`——`PatchAll(Type)` 对嵌套补丁类会静默跳过（本项目踩过的坑，见提交历史）。
-
-## 内存设计（重点）
-
-针对之前代码内存暴涨的问题，本插件全程按零 GC 分配规范编写：
-
-- **Update/OnGUI 热路径零分配**：只做 `KeyCode` 比较、字段读写、结构体运算
-- **IMGUI 全部复用**：`GUIContent`/`GUIStyle`/`GUI.WindowFunction` 委托/`Rect` 全部初始化时缓存；固定 `Rect` 的 `GUI.*`，不用 `GUILayout`（其布局每次调用都分配）
-- **不用 LINQ、不用闭包、不订阅实例事件**（无事件泄漏面）
-- **字符串只在状态变化或 1Hz 时生成**（性能监视器 1 秒一次；弹药 HUD 只在弹药数变化时重建）
-- **反射零装箱**：写 auto-property backing field（咬钩计时、弹药）用**编译一次的表达式委托**（`FieldInfo.SetValue` 会装箱）；移速补丁用 Harmony `ref` 参数注入；`_rig` 是引用类型字段，`FieldInfo.GetValue` 不装箱
-- **ESP 名字缓存**：`Dictionary<int,string>` 按实例 ID 缓存，超 1024 条自动清空；Unity 的 `Object.name` 每次调用都分配，因此每只生物只取一次
-- 日志只在启动和出错时打，不逐帧打印
-
-可用 F7 性能监视器实测：开关菜单/雷达时 `GC` 数值不应增长（Unity IMGUI 自身有少量内部开销，与插件代码无关）。
-
-## 仓库结构
+需要 .NET SDK（无需 .NET Framework 472 Targeting Pack）：
 
 ```
-HowToFishCheatMenu/
-├── Plugin.cs              # 入口、配置、热键、补丁注册
-├── CheatCore.cs           # 游戏 API 封装（全部带主机校验）
-├── Patches.cs             # 4 个 Harmony 补丁 + 编译表达式 setter
-└── MenuUI.cs              # IMGUI 菜单 + 雷达 + 弹药 HUD + 性能监视
+dotnet build -c Release
 ```
 
-## 免责声明
+Release 构建自动部署 DLL 到游戏 `BepInEx/plugins/`。csproj 里的 `GameDir` 属性按需修改。
 
-本 mod 仅供学习交流，与 Dazed Games 官方无关。联机使用请征得其他玩家同意。
+## 适配版本
 
+| 本版本 | 游戏版本 |
+|---|---|
+| v2.1.0 / v2.0.0 | 2026-09-30 更新（赌场/欧元/小岛），Unity 6000.4.4f1 Mono |
+| v1.2.0 | 更新前版本 |
+
+游戏更新后大概率只需重编译（旧版 1.2 → 新版的全部 API 均无破坏性变更）。反编译参考保存在仓库外的 `_decomp/` 目录，用于快速核对 API。
+
+## 说明
+
+- 自动收线为原型功能：收线走游戏原始物理与线损判定，大鱼拉力过高时可能断线，可随时切回手动。
+- 免费购物跳过了余额校验与扣款；开启期间游戏自带 Ctrl+N 扣钱也不会生效，属预期行为。
+- 与其他玩家联机请提前说明，合理安排使用场景。
