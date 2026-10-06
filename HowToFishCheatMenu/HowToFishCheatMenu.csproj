@@ -5,7 +5,7 @@
     <AssemblyName>HowToFishCheatMenu</AssemblyName>
     <RootNamespace>HTF.CheatMenu</RootNamespace>
     <LangVersion>latest</LangVersion>
-    <Version>2.3.2</Version>
+    <Version>2.4.0</Version>
     <Deterministic>true</Deterministic>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

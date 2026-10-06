@@ -17,7 +17,7 @@ namespace HTF.CheatMenu
 	{
 		public const string PluginGuid = "com.htf.cheatmenu";
 		public const string PluginName = "HowToFishCheatMenu";
-		public const string PluginVersion = "2.3.2";
+		public const string PluginVersion = "2.4.0";
 
 		internal static ManualLogSource Log;
 
@@ -67,7 +67,7 @@ namespace HTF.CheatMenu
 				"跳跃倍率可选项，逗号分隔，菜单按钮循环切换");
 			_sellMults = Config.Bind("General", "SellMultipliers", "1,2,3,5,10",
 				"卖鱼价值倍率可选项（仅主机生效），菜单按钮循环切换");
-			_uiScale = Config.Bind("General", "UiScale", 1f,
+			_uiScale = Config.Bind("General", "UiScale", 1.4f,
 				new ConfigDescription("菜单缩放", new AcceptableValueRange<float>(0.75f, 1.6f)));
 
 			_menuKey = Config.Bind("Hotkeys", "MenuKey", KeyCode.F1, "开关作弊菜单");
@@ -86,7 +86,8 @@ namespace HTF.CheatMenu
 			MoneyAmount = _moneyAmount;
 			UiScaleEntry = _uiScale;
 
-			Ui.Scale = Mathf.Clamp(_uiScale.Value, 0.75f, 1.6f);
+			// 旧默认 1.0 在高分辨率渲染下偏小：迁移到 1.4（用户手动调过则尊重）
+			Ui.Scale = Mathf.Clamp(Mathf.Approximately(_uiScale.Value, 1.0f) ? 1.4f : _uiScale.Value, 0.75f, 1.6f);
 			Ui.InitFont();
 
 			SpeedOptions = ParseFloatList(_speedMults.Value, 1f);

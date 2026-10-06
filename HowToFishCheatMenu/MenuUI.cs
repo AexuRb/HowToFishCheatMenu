@@ -6,20 +6,18 @@ using UnityEngine;
 namespace HTF.CheatMenu
 {
 	/// <summary>
-	/// UI 4.2 "Candy"（H 糖果街机 · 完整版）：
-	/// 单一糖果窗口 + 分组卡片（白底墨描边硬阴影，彩色标签牌骑上沿）。
-	/// 规避 GC：所有 GUIContent / 纹理 / 样式一次构建复用；布局用 Ui 静态游标推进；
-	/// 卡片高度逐帧收敛（首帧估算，次帧起实测）。
+	/// UI 5.0 "Candy"（H 糖果街机 · GUILayout 版）：
+	/// 单一糖果窗口，GUILayout 自动布局——行高/卡高由布局引擎计算，不会重叠；
+	/// 缩放经 GUI.matrix 统一生效。卡片 = 阴影外层组 + 白卡内层组，标签牌骑上沿。
 	/// </summary>
 	internal static class MenuUI
 	{
 		private const int WinId = 0x48544633;
 		private static bool _menuOpen;
 		private static int _tab;
-		private static Rect _winRect = new Rect(40f, 40f, 500f, 680f);
-		private static readonly GUI.WindowFunction WindowFunc = DrawWindow;
-		private static readonly float[] _pageHeights = new float[6];
-		private static readonly Vector2[] _scrolls = new Vector2[6];
+		private static float _winX = 60f, _winY = 60f;
+		private static Vector2 _scroll;
+		private static readonly int[] _tabOnCount = new int[6];
 
 		// ---- 金钱输入 ----
 		private static string _moneyInput = "10000";
@@ -28,7 +26,6 @@ namespace HTF.CheatMenu
 		private static bool _listBuilt;
 		private static Item[] _allItems = new Item[0];
 		private static GUIContent[] _allLabels = new GUIContent[0];
-		private static bool[] _allIsCreature = new bool[0];
 		private static Item[] _viewItems = new Item[0];
 		private static GUIContent[] _viewLabels = new GUIContent[0];
 		private static string _search = string.Empty;
@@ -45,9 +42,13 @@ namespace HTF.CheatMenu
 		private static bool _hostNow;
 		private static string _hostText = string.Empty;
 
-		// ---- 标签牌注册 ----
-		private static int _pSurvival, _pWeapon, _pMoney, _pTp, _pCreature, _pSpawner;
-		private static int _pCasino, _pFishing, _pOverlay, _pScale, _pRules, _pProgress;
+		// ---- 标签牌 ----
+		private static readonly GUIContent[] _plateContent = new GUIContent[12];
+		private static readonly int[] _plateColor = new int[12];
+		private static readonly Dictionary<int, float> _plateW = new Dictionary<int, float>();
+		private const int
+			_pSurvival = 0, _pWeapon = 1, _pMoney = 2, _pTp = 3, _pCreature = 4, _pSpawner = 5,
+			_pCasino = 6, _pFishing = 7, _pOverlay = 8, _pScale = 9, _pRules = 10, _pProgress = 11;
 
 		internal static bool MenuOpen => _menuOpen;
 		internal static bool PanelOpen => _menuOpen;
@@ -91,19 +92,18 @@ namespace HTF.CheatMenu
 				Ui.GC("杂项", "Misc"),
 			};
 
-			// 标签牌：内容 + 配色（0 香蕉 1 天蓝 2 丁香 3 薄荷 4 珊瑚 5 奶油）
-			_pSurvival = Ui.RegisterPlate(Ui.GC("生存"), 3);
-			_pWeapon = Ui.RegisterPlate(Ui.GC("武器"), 1);
-			_pMoney = Ui.RegisterPlate(Ui.GC("金钱"), 0);
-			_pTp = Ui.RegisterPlate(Ui.GC("传送"), 1);
-			_pCreature = Ui.RegisterPlate(Ui.GC("生物"), 4);
-			_pSpawner = Ui.RegisterPlate(Ui.GC("生成器"), 2);
-			_pCasino = Ui.RegisterPlate(Ui.GC("赌场"), 2);
-			_pFishing = Ui.RegisterPlate(Ui.GC("钓鱼辅助"), 3);
-			_pOverlay = Ui.RegisterPlate(Ui.GC("显示"), 1);
-			_pScale = Ui.RegisterPlate(Ui.GC("界面缩放"), 0);
-			_pRules = Ui.RegisterPlate(Ui.GC("服务器规则"), 1);
-			_pProgress = Ui.RegisterPlate(Ui.GC("进度"), 0);
+			Plate(_pSurvival, "生存", 3);
+			Plate(_pWeapon, "武器", 1);
+			Plate(_pMoney, "金钱", 0);
+			Plate(_pTp, "传送", 1);
+			Plate(_pCreature, "生物", 4);
+			Plate(_pSpawner, "生成器", 2);
+			Plate(_pCasino, "赌场", 2);
+			Plate(_pFishing, "钓鱼辅助", 3);
+			Plate(_pOverlay, "显示", 1);
+			Plate(_pScale, "界面缩放", 0);
+			Plate(_pRules, "服务器规则", 1);
+			Plate(_pProgress, "进度", 0);
 
 			string host = Ui.HostSuffix;
 			_cCheats = Ui.GC("开启游戏内置作弊", "Enable built-in cheats");
@@ -172,6 +172,12 @@ namespace HTF.CheatMenu
 			_cScaleLabel = Ui.GC("界面缩放", "UI scale");
 		}
 
+		private static void Plate(int idx, string text, int colorIdx)
+		{
+			_plateContent[idx] = new GUIContent(text);
+			_plateColor[idx] = colorIdx;
+		}
+
 		private static GUIContent H(GUIContent c, string hostSuffix)
 		{
 			return new GUIContent(c.text + hostSuffix, c.image, c.tooltip);
@@ -219,63 +225,55 @@ namespace HTF.CheatMenu
 			{
 				return;
 			}
-			Ui.CardFrameReset(_tab);
-			Ui.HardShadow(_winRect, 7f * Ui.Scale);
-			_winRect = GUI.Window(WinId, _winRect, WindowFunc, GUIContent.none, Ui.Panel);
+			// 统一缩放：设计坐标 1:1 书写，矩阵负责放大；IMGUI 会自动逆变换鼠标命中
+			GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(Ui.Scale, Ui.Scale, 1f));
+			float dw = Screen.width / Ui.Scale;
+			float dh = Screen.height / Ui.Scale;
+			Rect win = new Rect(Mathf.Clamp(_winX, 8f, Mathf.Max(8f, dw - 508f)),
+				Mathf.Clamp(_winY, 8f, Mathf.Max(8f, dh - 200f)), 500f, 690f);
+			GUILayout.Window(WinId, win, DrawWindow, GUIContent.none, Ui.WinPanel);
+			GUI.matrix = Matrix4x4.identity;
 		}
 
 		private static void DrawWindow(int id)
 		{
-			float s = Ui.Scale;
-			float w = _winRect.width;
-
-			// ---- 页眉：logo + 标题 + 主机徽章 + 关闭 ----
-			Rect logoR = new Rect(14f * s, 10f * s, 44f * s, 44f * s);
-			Ui.HardShadow(logoR, 3f * s);
-			GUI.DrawTexture(logoR, Ui.TagTex(0));
-			GUI.Label(logoR, _logo, Ui.Tag);
-			Rect titleR = new Rect(66f * s, 0f, w - 290f * s, 60f * s);
-			GUI.Label(titleR, Ui.GC("鱼力全开 · 作弊菜单", "How to Fish · Cheat Menu"), Ui.Title);
-
-			if (!_hostStatusBuilt)
-			{
-				_hostNow = CheatCore.IsServer;
-				_hostText = Ui.UseZh ? (_hostNow ? "★ 主机" : "客户端") : (_hostNow ? "★ HOST" : "CLIENT");
-				_hostStatusBuilt = true;
-			}
-			float chipH = 26f * s;
-			Rect hostR = new Rect(w - 150f * s, (60f * s - chipH) * 0.5f, 88f * s, chipH);
-			Ui.HardShadow(hostR, 2.5f * s);
-			GUI.Box(hostR, GUIContent.none, Ui.Chip);
-			Ui.Dot(new Rect(hostR.x + 9f * s, hostR.y + (hostR.height - 7f * s) * 0.5f, 7f * s, 7f * s), _hostNow ? Ui.ColMint : Ui.ColOff);
-			GUI.Label(new Rect(hostR.x + 20f * s, hostR.y, hostR.width - 22f * s, hostR.height), _hostText, Ui.Chip);
-			Rect closeR = new Rect(w - 42f * s, (60f * s - 28f * s) * 0.5f, 28f * s, 28f * s);
-			Ui.HardShadow(closeR, 2.5f * s);
-			if (GUI.Button(closeR, _close, Ui.Tab))
+			// ---- 页眉 ----
+			GUILayout.BeginHorizontal();
+			GUILayout.Space(6f);
+			Rect logoR = GUILayoutUtility.GetRect(44f, 44f, GUILayout.Width(44f), GUILayout.Height(44f));
+			Ui.DrawShadowed(logoR, Ui.PlateTex(0));
+			GUI.Label(logoR, _logo, Ui.TagLabel);
+			GUILayout.Space(8f);
+			GUILayout.Label(Ui.GC("鱼力全开 · 作弊菜单", "How to Fish · Cheat Menu"), Ui.DocklessTitle, GUILayout.Height(44f));
+			GUILayout.FlexibleSpace();
+			DrawHostChip();
+			Rect closeR = GUILayoutUtility.GetRect(30f, 30f, GUILayout.Width(30f), GUILayout.Height(30f));
+			Ui.DrawShadowed(closeR, Ui.PlateTex(4));
+			if (GUI.Button(closeR, _close, Ui.TagLabel))
 			{
 				ToggleMenu();
-				return;
+				GUIUtility.ExitGUI();
 			}
+			GUILayout.EndHorizontal();
+			GUILayout.Space(10f);
 
 			// ---- 芯片页签 ----
-			Rect chips = new Rect(Ui.Pad * s, 66f * s, w - Ui.Pad * 2f * s, 36f * s);
-			float cw = (chips.width - 5f * 8f * s) / 6f;
+			GUILayout.BeginHorizontal();
+			float chipW = (500f - 32f - 5f * 8f) / 6f;
 			for (int i = 0; i < 6; i++)
 			{
-				Rect r = new Rect(chips.x + i * (cw + 8f * s), chips.y, cw, chips.height);
-				Ui.HardShadow(r, 2.5f * s);
+				Rect r = GUILayoutUtility.GetRect(chipW, 36f, GUILayout.Width(chipW), GUILayout.Height(36f));
 				if (GUI.Button(r, _tabs[i], _tab == i ? Ui.TabActive : Ui.Tab))
 				{
 					_tab = i;
 				}
 			}
+			GUILayout.EndHorizontal();
+			GUILayout.Space(8f);
 
-			// ---- 内容滚动 ----
-			float top = chips.y + chips.height + 14f * s;
-			Rect view = new Rect(Ui.Pad * s, top, w - Ui.Pad * 2f * s, _winRect.height - top - 14f * s);
-			float contentH = Mathf.Max(_pageHeights[_tab], view.height);
-			Vector2 scroll = GUI.BeginScrollView(view, _scrolls[_tab], new Rect(0f, 0f, view.width - 14f, contentH));
-			Ui.BeginArea(0f, 6f * s, view.width - 14f);
+			// ---- 内容 ----
+			_scroll = GUILayout.BeginScrollView(_scroll, false, false, GUI.skin.horizontalScrollbar,
+				GUI.skin.verticalScrollbar, GUIStyle.none);
 			switch (_tab)
 			{
 				case 0: DrawPlayer(); break;
@@ -285,11 +283,110 @@ namespace HTF.CheatMenu
 				case 4: DrawDisplay(); break;
 				default: DrawMisc(); break;
 			}
-			_pageHeights[_tab] = Ui.CursorY + Ui.Pad * s;
-			GUI.EndScrollView();
-			_scrolls[_tab] = scroll;
+			GUILayout.EndScrollView();
 
-			GUI.DragWindow(new Rect(0f, 0f, w, 60f * s));
+			GUI.DragWindow(new Rect(0f, 0f, 10000f, 52f));
+		}
+
+		private static void DrawHostChip()
+		{
+			if (!_hostStatusBuilt)
+			{
+				_hostNow = CheatCore.IsServer;
+				_hostText = Ui.UseZh ? (_hostNow ? "★ 主机" : "客户端") : (_hostNow ? "★ HOST" : "CLIENT");
+				_hostStatusBuilt = true;
+			}
+			Rect chipR = GUILayoutUtility.GetRect(92f, 30f, GUILayout.Width(92f), GUILayout.Height(30f));
+			GUI.Box(chipR, GUIContent.none, Ui.Chip);
+			Ui.Dot(new Rect(chipR.x + 9f, chipR.y + (chipR.height - 8f) * 0.5f, 8f, 8f), _hostNow ? Ui.ColMint : Ui.ColOff);
+			GUI.Label(new Rect(chipR.x + 22f, chipR.y, chipR.width - 24f, chipR.height), _hostText, Ui.Chip);
+		}
+
+		// ---- 卡片骨架：阴影外层组 + 白卡内层组 + 骑边标签牌 ----
+		private static void CardBegin(int plateIdx)
+		{
+			GUILayout.BeginVertical(Ui.CardShadow);
+			GUILayout.BeginVertical(Ui.CardInner);
+			GUILayout.Space(14f);
+		}
+
+		private static void CardEnd(int plateIdx)
+		{
+			GUILayout.EndVertical();
+			GUILayout.EndVertical();
+			if (Event.current.type == EventType.Repaint)
+			{
+				Rect outer = GUILayoutUtility.GetLastRect();
+				if (outer.height > 10f)
+				{
+					float pw = PlateWidth(plateIdx);
+					Rect plate = new Rect(outer.x + 14f, outer.y - 12f, pw, 26f);
+					Ui.DrawShadowed(plate, Ui.PlateTex(_plateColor[plateIdx]));
+					GUI.Label(plate, _plateContent[plateIdx], Ui.TagLabel);
+				}
+			}
+		}
+
+		private static float PlateWidth(int plateIdx)
+		{
+			if (!_plateW.TryGetValue(plateIdx, out float w))
+			{
+				w = Ui.TagLabel.CalcSize(_plateContent[plateIdx]).x + 30f;
+				_plateW[plateIdx] = w;
+			}
+			return w;
+		}
+
+		// ---- 开关行 ----
+		private static bool ToggleRow(GUIContent label, bool on, bool interactable = true)
+		{
+			Rect row = GUILayoutUtility.GetRect(0f, 37f, GUILayout.ExpandWidth(true));
+			Event e = Event.current;
+			bool hover = interactable && e.type == EventType.Repaint && row.Contains(e.mousePosition);
+			if (hover)
+			{
+				Ui.DrawRowHover(row);
+			}
+			GUI.Label(new Rect(row.x + 8f, row.y, row.width - 74f, row.height), label, interactable ? Ui.Label : Ui.Dim);
+			Rect sw = new Rect(row.xMax - 60f, row.y + (row.height - 22f) * 0.5f, 50f, 22f);
+			Ui.DrawSwitch(sw, on);
+			return interactable && GUI.Button(row, GUIContent.none, GUIStyle.none);
+		}
+
+		// ---- 分段控件行 ----
+		private static void SegRow(GUIContent a, GUIContent b, bool aActive, Action setA, Action setB)
+		{
+			GUILayout.BeginHorizontal();
+			Rect r1 = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+			Rect r2 = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+			if (GUI.Button(r1, a, aActive ? Ui.TabActive : Ui.Tab)) { setA(); }
+			if (GUI.Button(r2, b, !aActive ? Ui.TabActive : Ui.Tab)) { setB(); }
+			GUILayout.EndHorizontal();
+		}
+
+		private static void SegRow3(GUIContent a, GUIContent b, GUIContent c, int active, Action<int> set)
+		{
+			GUILayout.BeginHorizontal();
+			GUIContent[] cs = { a, b, c };
+			for (int i = 0; i < 3; i++)
+			{
+				Rect r = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
+				if (GUI.Button(r, cs[i], active == i ? Ui.TabActive : Ui.Tab))
+				{
+					set(i);
+				}
+			}
+			GUILayout.EndHorizontal();
+		}
+
+		private static void ActionRow2(GUIContent l, GUIContent r, bool en, Action al, Action ar)
+		{
+			GUILayout.BeginHorizontal();
+			Rect r1 = GUILayoutUtility.GetRect(0f, 37f, GUILayout.ExpandWidth(true));
+			Rect r2 = GUILayoutUtility.GetRect(0f, 37f, GUILayout.ExpandWidth(true));
+			if (GUI.Button(r1, l, en ? Ui.BtnGhost : Ui.BtnDisabled) && en) { al(); }
+			if (GUI.Button(r2, r, en ? Ui.BtnGhost : Ui.BtnDisabled) && en) { ar(); }
+			GUILayout.EndHorizontal();
 		}
 
 		// ================= 玩家 =================
@@ -297,63 +394,48 @@ namespace HTF.CheatMenu
 		{
 			bool host = CheatCore.IsServer;
 
-			if (Ui.Ghost(_cCheats))
+			if (GUILayout.Button(_cCheats, Ui.BtnGhost, GUILayout.Height(38f)))
 			{
 				CheatCore.EnableCheats();
 				CheatCore.Say(Msg.Done);
 			}
-			Ui.Next();
+			GUILayout.Space(6f);
 
-			Ui.CardBegin(_pSurvival);
-			if (Ui.ToggleRow(_cGod, CheatCore.GodOn, host)) { CheatCore.ToggleGod(); }
-			Ui.Next();
-			if (Ui.ToggleRow(_cOneShot, CheatCore.OneShotOn, host)) { CheatCore.ToggleOneShot(); }
-			Ui.Next();
-			if (Ui.ToggleRow(_cHunger, CheatCore.HungerFreeze, host)) { CheatCore.HungerFreeze = !CheatCore.HungerFreeze; }
-			Ui.CardEnd();
+			CardBegin(_pSurvival);
+			if (ToggleRow(_cGod, CheatCore.GodOn, host)) { CheatCore.ToggleGod(); }
+			if (ToggleRow(_cOneShot, CheatCore.OneShotOn, host)) { CheatCore.ToggleOneShot(); }
+			if (ToggleRow(_cHunger, CheatCore.HungerFreeze, host)) { CheatCore.HungerFreeze = !CheatCore.HungerFreeze; }
+			CardEnd(_pSurvival);
 
-			Ui.CardBegin(_pWeapon);
-			if (Ui.ToggleRow(_cAmmo, CheatCore.InfiniteAmmo))
+			CardBegin(_pWeapon);
+			if (ToggleRow(_cAmmo, CheatCore.InfiniteAmmo))
 			{
 				CheatCore.InfiniteAmmo = !CheatCore.InfiniteAmmo;
 				CheatCore.Say(CheatCore.InfiniteAmmo ? Msg.AmmoOn : Msg.AmmoOff);
 			}
-			Ui.Next();
-			if (Ui.ToggleRow(_cNoRecoil, CheatCore.NoRecoil)) { CheatCore.NoRecoil = !CheatCore.NoRecoil; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cRapid, CheatCore.RapidFire)) { CheatCore.RapidFire = !CheatCore.RapidFire; }
-			Ui.Next();
-			if (Ui.Button(_cSpeed[Plugin.SpeedIndex])) { Plugin.CycleSpeed(); }
-			Ui.Next();
-			if (Ui.Button(_cJump[Plugin.JumpIndex])) { Plugin.CycleJump(); }
-			Ui.CardEnd();
+			if (ToggleRow(_cNoRecoil, CheatCore.NoRecoil)) { CheatCore.NoRecoil = !CheatCore.NoRecoil; }
+			if (ToggleRow(_cRapid, CheatCore.RapidFire)) { CheatCore.RapidFire = !CheatCore.RapidFire; }
+			if (GUILayout.Button(_cSpeed[Plugin.SpeedIndex], Ui.BtnGhost, GUILayout.Height(37f))) { Plugin.CycleSpeed(); }
+			if (GUILayout.Button(_cJump[Plugin.JumpIndex], Ui.BtnGhost, GUILayout.Height(37f))) { Plugin.CycleJump(); }
+			CardEnd(_pWeapon);
 
-			Ui.CardBegin(_pMoney);
-			Rect r1 = Ui.Slice(0f, 0.49f);
-			Rect r2 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(r1, _cDollar, CheatCore.MoneyCurrency == Currency.Dollar ? Ui.TabActive : Ui.Tab))
+			CardBegin(_pMoney);
+			SegRow(_cDollar, _cEuro, CheatCore.MoneyCurrency == Currency.Dollar,
+				() => CheatCore.MoneyCurrency = Currency.Dollar,
+				() => CheatCore.MoneyCurrency = Currency.Euro);
+			GUILayout.BeginHorizontal();
+			_moneyInput = GUILayout.TextField(_moneyInput, Ui.Field, GUILayout.Height(40f));
+			if (GUILayout.Button(_cAddMoney, Ui.BtnPrimary, GUILayout.Height(40f), GUILayout.Width(96f)) && host)
 			{
-				CheatCore.MoneyCurrency = Currency.Dollar;
+				if (int.TryParse(_moneyInput, out int amt)) { CheatCore.AddMoney(amt); }
 			}
-			if (GUI.Button(r2, _cEuro, CheatCore.MoneyCurrency == Currency.Euro ? Ui.TabActive : Ui.Tab))
+			GUILayout.EndHorizontal();
+			GUILayout.Space(6f);
+			if (GUILayout.Button(_cSetMoney, Ui.BtnGhost, GUILayout.Height(37f)) && host)
 			{
-				CheatCore.MoneyCurrency = Currency.Euro;
+				if (int.TryParse(_moneyInput, out int set)) { CheatCore.SetMoney(set); }
 			}
-			Ui.Next();
-			Rect fieldR = Ui.Slice(0f, 0.60f);
-			string edited = GUI.TextField(fieldR, _moneyInput, Ui.Field);
-			if (!ReferenceEquals(edited, _moneyInput)) { _moneyInput = edited; }
-			Rect addR = Ui.Slice(0.62f, 0.38f);
-			if (Ui.Primary(_cAddMoney, host) && host && int.TryParse(_moneyInput, out int amt))
-			{
-				CheatCore.AddMoney(amt);
-			}
-			Ui.Next();
-			if (Ui.Ghost(_cSetMoney, host) && host && int.TryParse(_moneyInput, out int set))
-			{
-				CheatCore.SetMoney(set);
-			}
-			Ui.CardEnd();
+			CardEnd(_pMoney);
 		}
 
 		// ================= 世界 =================
@@ -361,21 +443,17 @@ namespace HTF.CheatMenu
 		{
 			bool host = CheatCore.IsServer;
 
-			Ui.CardBegin(_pTp);
-			Rect half1 = Ui.Slice(0f, 0.49f);
-			Rect half2 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(half1, _cTpPrev, Ui.BtnGhost)) { CheatCore.TpIsland(true); }
-			if (GUI.Button(half2, _cTpNext, Ui.BtnGhost)) { CheatCore.TpIsland(false); }
-			Ui.Next();
-			if (Ui.Ghost(_cTpMini, host)) { CheatCore.TpRandomMini(); }
-			Ui.Next();
-
+			CardBegin(_pTp);
+			ActionRow2(_cTpPrev, _cTpNext, true, () => CheatCore.TpIsland(true), () => CheatCore.TpIsland(false));
+			if (GUILayout.Button(_cTpMini, Ui.BtnGhost, GUILayout.Height(37f)) && host) { CheatCore.TpRandomMini(); }
+			GUILayout.Space(4f);
+			GUILayout.BeginHorizontal();
+			Rect minusR = GUILayoutUtility.GetRect(0f, 36f, GUILayout.Width(52f));
+			Rect labelR = GUILayoutUtility.GetRect(0f, 36f, GUILayout.ExpandWidth(true));
+			Rect plusR = GUILayoutUtility.GetRect(0f, 36f, GUILayout.Width(52f));
+			Rect goR = GUILayoutUtility.GetRect(0f, 36f, GUILayout.ExpandWidth(true));
 			if (_mainIslands == null || _mainIslands.Length == 0) { BuildMainIslands(); }
 			if (_islandSel < 0 && _mainIslands != null && _mainIslands.Length > 0) { _islandSel = 0; }
-			Rect minusR = Ui.Slice(0f, 0.12f);
-			Rect labelR = Ui.Slice(0.14f, 0.32f);
-			Rect plusR = Ui.Slice(0.48f, 0.12f);
-			Rect goR = Ui.Slice(0.62f, 0.38f);
 			if (GUI.Button(minusR, _cIslandMinus, Ui.Tab) && _mainIslands != null && _mainIslands.Length > 0)
 			{
 				_islandSel = (_islandSel + _mainIslands.Length - 1) % _mainIslands.Length;
@@ -392,50 +470,43 @@ namespace HTF.CheatMenu
 					_islandLabel = new GUIContent((Ui.UseZh ? "岛 " : "Island ") + _mainIslands[sel]);
 				}
 				GUI.Label(labelR, _islandLabel, Ui.Value);
-				if (Ui.Primary(_cTpGo, host) && host) { CheatCore.TpIsland(_mainIslands[sel]); }
+				if (GUI.Button(goR, _cTpGo, host ? Ui.BtnPrimary : Ui.BtnDisabled) && host)
+				{
+					CheatCore.TpIsland(_mainIslands[sel]);
+				}
 			}
-			Ui.CardEnd();
+			GUILayout.EndHorizontal();
+			CardEnd(_pTp);
 
-			Ui.CardBegin(_pCreature);
-			Rect c1 = Ui.Slice(0f, 0.49f);
-			Rect c2 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(c1, _cKillBoss, host ? Ui.BtnGhost : Ui.BtnDisabled)) { CheatCore.KillBoss(); }
-			if (GUI.Button(c2, _cKillAlive, host ? Ui.BtnGhost : Ui.BtnDisabled))
+			CardBegin(_pCreature);
+			ActionRow2(_cKillBoss, _cKillAlive, host, CheatCore.KillBoss, () =>
 			{
 				CheatCore.Say(CheatCore.KillAllAliveCreatures() ? Msg.Done : Msg.NeedHost);
-			}
-			Ui.Next();
-			Rect c3 = Ui.Slice(0f, 0.49f);
-			Rect c4 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(c3, _cClearJournal, host ? Ui.BtnGhost : Ui.BtnDisabled))
-			{
-				CheatCore.SetAllCreaturesKilled(false, false);
-				CheatCore.Say(Msg.Done);
-			}
-			if (GUI.Button(c4, _cJournalComplete, host ? Ui.BtnGhost : Ui.BtnDisabled)) { CheatCore.CompleteJournal(); }
-			Ui.CardEnd();
+			});
+			ActionRow2(_cClearJournal, _cJournalComplete, host,
+				() => { CheatCore.SetAllCreaturesKilled(false, false); CheatCore.Say(Msg.Done); },
+				CheatCore.CompleteJournal);
+			CardEnd(_pCreature);
 
-			Ui.CardBegin(_pSpawner);
-			string edited = GUI.TextField(Ui.Slice(0f, 0.58f), _search, Ui.Field);
-			if (!ReferenceEquals(edited, _search)) { _search = edited; FilterSpawnList(); }
-			Rect dripR = Ui.Slice(0.60f, 0.19f);
-			Rect deadR = Ui.Slice(0.80f, 0.20f);
+			CardBegin(_pSpawner);
+			GUILayout.BeginHorizontal();
+			_search = GUILayout.TextField(_search, Ui.Field, GUILayout.Height(38f));
+			Rect dripR = GUILayoutUtility.GetRect(52f, 38f, GUILayout.Width(52f));
+			Rect deadR = GUILayoutUtility.GetRect(52f, 38f, GUILayout.Width(52f));
 			if (GUI.Button(dripR, _cDrip, _spawnDrip ? Ui.TabActive : Ui.Tab)) { _spawnDrip = !_spawnDrip; }
 			if (GUI.Button(deadR, _cDead, _spawnDead ? Ui.TabActive : Ui.Tab)) { _spawnDead = !_spawnDead; }
-			Ui.Next();
-			Ui.LabelRow(_cSearchHint, Ui.Small);
-			Ui.Next();
-			Ui.Row(26f * Ui.Scale);
+			GUILayout.EndHorizontal();
+			GUILayout.Label(_cSearchHint, Ui.Small);
+			GUILayout.Space(4f);
 			int count = _viewLabels.Length;
 			for (int i = 0; i < count; i++)
 			{
-				if (GUI.Button(Ui.Slice(0f, 1f), _viewLabels[i], Ui.Btn) && host)
+				if (GUILayout.Button(_viewLabels[i], Ui.ListBtn, GUILayout.Height(30f)) && host)
 				{
 					CheatCore.SpawnPrefab(_viewItems[i], _spawnDrip, _spawnDead);
 				}
-				Ui.Next();
 			}
-			Ui.CardEnd();
+			CardEnd(_pSpawner);
 		}
 
 		private static void BuildMainIslands()
@@ -463,78 +534,60 @@ namespace HTF.CheatMenu
 		private static void DrawCasino()
 		{
 			bool host = CheatCore.IsServer;
-			Ui.CardBegin(_pCasino);
-			if (Ui.ToggleRow(_cRoulette, CheatCore.RouletteWin, host)) { CheatCore.RouletteWin = !CheatCore.RouletteWin; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cSlots, CheatCore.SlotsLegendary, host))
+			CardBegin(_pCasino);
+			if (ToggleRow(_cRoulette, CheatCore.RouletteWin, host)) { CheatCore.RouletteWin = !CheatCore.RouletteWin; }
+			if (ToggleRow(_cSlots, CheatCore.SlotsLegendary, host))
 			{
 				CheatCore.SlotsLegendary = !CheatCore.SlotsLegendary;
 				CheatCore.ApplySlotsCheat();
 			}
-			Ui.Next();
-			Ui.LabelRow(_cCasinoHint, Ui.Small);
-			Ui.CardEnd();
+			GUILayout.Label(_cCasinoHint, Ui.Small);
+			CardEnd(_pCasino);
 		}
 
 		// ================= 钓鱼 =================
 		private static void DrawFishing()
 		{
-			Ui.CardBegin(_pFishing);
-			if (Ui.ToggleRow(_cBite, CheatCore.InstantBite))
+			CardBegin(_pFishing);
+			if (ToggleRow(_cBite, CheatCore.InstantBite))
 			{
 				CheatCore.InstantBite = !CheatCore.InstantBite;
 				CheatCore.Say(CheatCore.InstantBite ? Msg.BiteOn : Msg.BiteOff);
 			}
-			Ui.Next();
-			if (Ui.ToggleRow(_cAutoReel, CheatCore.AutoReel)) { CheatCore.AutoReel = !CheatCore.AutoReel; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cWeight, CheatCore.MaxWeight, CheatCore.IsServer)) { CheatCore.MaxWeight = !CheatCore.MaxWeight; }
-			Ui.Next();
-			Ui.LabelRow(_cReelHint, Ui.Small);
-			Ui.Next();
-			Ui.LabelRow(_cWeightHint, Ui.Small);
-			Ui.Next();
-			Ui.LabelRow(_cBiteHint, Ui.Small);
-			Ui.CardEnd();
+			if (ToggleRow(_cAutoReel, CheatCore.AutoReel)) { CheatCore.AutoReel = !CheatCore.AutoReel; }
+			if (ToggleRow(_cWeight, CheatCore.MaxWeight, CheatCore.IsServer)) { CheatCore.MaxWeight = !CheatCore.MaxWeight; }
+			GUILayout.Label(_cReelHint, Ui.Small);
+			GUILayout.Label(_cWeightHint, Ui.Small);
+			GUILayout.Label(_cBiteHint, Ui.Small);
+			CardEnd(_pFishing);
 		}
 
 		// ================= 显示 =================
 		private static void DrawDisplay()
 		{
-			Ui.CardBegin(_pOverlay);
-			if (Ui.ToggleRow(_cEsp, Overlays.EspEnabled)) { Overlays.ToggleEsp(); }
-			Ui.Next();
-			if (Ui.ToggleRow(_cEspNames, Plugin.EspShowNames.Value)) { Plugin.EspShowNames.Value = !Plugin.EspShowNames.Value; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cEspWorth, Plugin.EspShowWorth.Value)) { Plugin.EspShowWorth.Value = !Plugin.EspShowWorth.Value; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cItemEsp, Plugin.ItemEspEnabled.Value)) { Plugin.ItemEspEnabled.Value = !Plugin.ItemEspEnabled.Value; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cAmmoHud, Plugin.AmmoHudEnabled.Value)) { Plugin.AmmoHudEnabled.Value = !Plugin.AmmoHudEnabled.Value; }
-			Ui.Next();
-			if (Ui.ToggleRow(_cPerf, Overlays.PerfEnabled)) { Overlays.TogglePerf(); }
-			Ui.CardEnd();
+			CardBegin(_pOverlay);
+			if (ToggleRow(_cEsp, Overlays.EspEnabled)) { Overlays.ToggleEsp(); }
+			if (ToggleRow(_cEspNames, Plugin.EspShowNames.Value)) { Plugin.EspShowNames.Value = !Plugin.EspShowNames.Value; }
+			if (ToggleRow(_cEspWorth, Plugin.EspShowWorth.Value)) { Plugin.EspShowWorth.Value = !Plugin.EspShowWorth.Value; }
+			if (ToggleRow(_cItemEsp, Plugin.ItemEspEnabled.Value)) { Plugin.ItemEspEnabled.Value = !Plugin.ItemEspEnabled.Value; }
+			if (ToggleRow(_cAmmoHud, Plugin.AmmoHudEnabled.Value)) { Plugin.AmmoHudEnabled.Value = !Plugin.AmmoHudEnabled.Value; }
+			if (ToggleRow(_cPerf, Overlays.PerfEnabled)) { Overlays.TogglePerf(); }
+			CardEnd(_pOverlay);
 
-			Ui.CardBegin(_pScale);
-			Ui.Row(24f);
-			Rect sliderR = Ui.Slice(0.02f, 0.66f);
-			float v = GUI.HorizontalSlider(sliderR, Ui.Scale, 0.75f, 1.5f);
-			if (Mathf.Abs(Ui.Scale - _scaleTextValue) > 0.005f)
-			{
-				_scaleTextValue = Ui.Scale;
-				_scaleText = Ui.Scale.ToString("F2") + "×";
-			}
-			GUI.Label(Ui.Slice(0.72f, 0.26f), _scaleText, Ui.Value);
+			CardBegin(_pScale);
+			GUILayout.BeginHorizontal();
+			GUILayout.Label(_cScaleLabel, Ui.Label, GUILayout.Width(90f));
+			float v = GUILayout.HorizontalSlider(Ui.Scale, 0.75f, 1.5f);
+			GUILayout.Label(_scaleText, Ui.Value, GUILayout.Width(64f));
+			GUILayout.EndHorizontal();
 			if (Mathf.Abs(v - Ui.Scale) > 0.0005f)
 			{
 				Ui.Scale = Mathf.Clamp(v, 0.75f, 1.5f);
-				Ui.InvalidateStyles();
 				Plugin.SaveUiScale(Ui.Scale);
 			}
-			Ui.CardEnd();
+			CardEnd(_pScale);
 		}
 
-		private static float _scaleTextValue = -1f;
 		private static string _scaleText = "1.00×";
 
 		// ================= 杂项 =================
@@ -542,36 +595,19 @@ namespace HTF.CheatMenu
 		{
 			bool host = CheatCore.IsServer;
 
-			Ui.CardBegin(_pRules);
-			Rect d1 = Ui.Slice(0f, 0.32f);
-			Rect d2 = Ui.Slice(0.34f, 0.32f);
-			Rect d3 = Ui.Slice(0.68f, 0.32f);
-			int diff = CheatCore.GetDifficulty();
-			if (GUI.Button(d1, _cDiffEasy, diff == 0 ? Ui.TabActive : Ui.Tab)) { CheatCore.SetDifficulty(0); }
-			if (GUI.Button(d2, _cDiffDefault, diff == 1 ? Ui.TabActive : Ui.Tab)) { CheatCore.SetDifficulty(1); }
-			if (GUI.Button(d3, _cDiffHard, diff == 2 ? Ui.TabActive : Ui.Tab)) { CheatCore.SetDifficulty(2); }
-			Ui.Next();
+			CardBegin(_pRules);
+			SegRow3(_cDiffEasy, _cDiffDefault, _cDiffHard, CheatCore.GetDifficulty(), CheatCore.SetDifficulty);
 			bool ff = ServerSettings.Instance && ServerSettings.UseFriendlyFire;
-			if (Ui.ToggleRow(_cFF, ff, host)) { CheatCore.ToggleFriendlyFire(!ff); }
-			Ui.Next();
-			if (Ui.ToggleRow(_cFree, CheatCore.FreeShopping, host)) { CheatCore.FreeShopping = !CheatCore.FreeShopping; }
-			Ui.Next();
-			if (Ui.Button(_cSell[Plugin.SellIndex], host) && host) { Plugin.CycleSell(); }
-			Ui.Next();
-			if (Ui.Ghost(_cFullRestore, host)) { CheatCore.FullRestore(); }
-			Ui.CardEnd();
+			if (ToggleRow(_cFF, ff, host)) { CheatCore.ToggleFriendlyFire(!ff); }
+			if (ToggleRow(_cFree, CheatCore.FreeShopping, host)) { CheatCore.FreeShopping = !CheatCore.FreeShopping; }
+			if (GUILayout.Button(_cSell[Plugin.SellIndex], Ui.BtnGhost, GUILayout.Height(37f)) && host) { Plugin.CycleSell(); }
+			if (GUILayout.Button(_cFullRestore, Ui.BtnGhost, GUILayout.Height(37f)) && host) { CheatCore.FullRestore(); }
+			CardEnd(_pRules);
 
-			Ui.CardBegin(_pProgress);
-			Rect p1 = Ui.Slice(0f, 0.49f);
-			Rect p2 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(p1, _cSkins, host ? Ui.BtnGhost : Ui.BtnDisabled)) { CheatCore.UnlockAllSkins(); }
-			if (GUI.Button(p2, _cAchUnlock, host ? Ui.BtnGhost : Ui.BtnDisabled)) { CheatCore.UnlockAchievements(); }
-			Ui.Next();
-			Rect p3 = Ui.Slice(0f, 0.49f);
-			Rect p4 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(p3, _cAchLock, host ? Ui.BtnGhost : Ui.BtnDisabled)) { CheatCore.LockAchievements(); }
-			if (GUI.Button(p4, _cFinish, host ? Ui.BtnGhost : Ui.BtnDisabled)) { CheatCore.FinishGame(); }
-			Ui.CardEnd();
+			CardBegin(_pProgress);
+			ActionRow2(_cSkins, _cAchUnlock, host, CheatCore.UnlockAllSkins, CheatCore.UnlockAchievements);
+			ActionRow2(_cAchLock, _cFinish, host, CheatCore.LockAchievements, CheatCore.FinishGame);
+			CardEnd(_pProgress);
 		}
 
 		// ================= 生成器列表 =================
@@ -632,7 +668,6 @@ namespace HTF.CheatMenu
 			Array.Sort(names, items, StringComparer.Ordinal);
 
 			_allItems = items;
-			_allIsCreature = creatures;
 			_allLabels = new GUIContent[items.Length];
 			for (int i = 0; i < items.Length; i++)
 			{
