@@ -6,11 +6,12 @@ using UnityEngine;
 namespace HTF.CheatMenu
 {
 	/// <summary>
-	/// UI 2.0：单窗口 + 六页签（玩家/世界/赌场/钓鱼/显示/杂项）。
+	/// UI 3.0：单窗口 + 六页签（玩家/世界/赌场/钓鱼/显示/杂项）。
+	/// 视觉：渐变标题栏 + 状态徽章、iOS 式开关行、主/次按钮层级、窗口阴影描边。
 	/// 规避 GC 的关键点：
 	/// - 所有 GUIContent / GUIStyle 在初始化时创建并复用
 	/// - 布局用 Ui 静态游标推进，不走 GUILayout
-	/// - 运行期字符串只在状态变化时生成（倍率按钮、主机状态、搜索过滤）
+	/// - 运行期字符串只在状态变化时生成
 	/// </summary>
 	internal static class MenuUI
 	{
@@ -48,7 +49,9 @@ namespace HTF.CheatMenu
 
 		// ---- 主机状态（打开菜单时刷新一次） ----
 		private static bool _hostStatusBuilt;
-		private static GUIContent _hostStatus;
+		private static bool _hostNow;
+		private static string _hostText = string.Empty;
+		private static GUIContent _versionChip;
 
 		internal static bool MenuOpen => _menuOpen;
 
@@ -57,48 +60,35 @@ namespace HTF.CheatMenu
 		private static GUIContent _close;
 		private static GUIContent[] _tabs;
 		private static GUIContent _cCheats;
-		private static GUIContent _cGodOn, _cGodOff;
-		private static GUIContent _cOneShotOn, _cOneShotOff;
-		private static GUIContent _cAmmoOn, _cAmmoOff;
-		private static GUIContent _cBiteOn, _cBiteOff;
-		private static GUIContent _cHungerOn, _cHungerOff;
-		private static GUIContent _cRouletteOn, _cRouletteOff;
-		private static GUIContent _cSlotsOn, _cSlotsOff;
-		private static GUIContent _cWeightOn, _cWeightOff;
-		private static GUIContent _cAutoReelOn, _cAutoReelOff;
-		private static GUIContent _cNoRecoilOn, _cNoRecoilOff;
-		private static GUIContent _cRapidOn, _cRapidOff;
-		private static GUIContent _cJournalComplete;
-		private static GUIContent _cScaleLabel;
+		private static GUIContent _cGod, _cOneShot, _cAmmo, _cNoRecoil, _cRapid, _cHunger;
+		private static GUIContent _cBite, _cAutoReel, _cWeight, _cRoulette, _cSlots;
+		private static GUIContent _cEsp, _cEspNames, _cEspWorth, _cItemEsp, _cPerf, _cAmmoHud;
+		private static GUIContent _cFF, _cFree;
 		private static GUIContent[] _cSpeed;
 		private static GUIContent[] _cJump;
 		private static GUIContent[] _cSell;
 		private static GUIContent _cDollar, _cEuro;
 		private static GUIContent _cSetMoney, _cAddMoney;
 		private static GUIContent _cTpPrev, _cTpNext, _cTpMini, _cTpGo, _cIslandMinus, _cIslandPlus;
-		private static GUIContent _cKillBoss, _cKillAlive, _cClearJournal;
+		private static GUIContent _cKillBoss, _cKillAlive, _cClearJournal, _cJournalComplete;
 		private static GUIContent _cSpawnHeader, _cDrip, _cDead;
-		private static GUIContent _cEspOn, _cEspOff;
-		private static GUIContent _cEspNamesOn, _cEspNamesOff;
-		private static GUIContent _cEspWorthOn, _cEspWorthOff;
-		private static GUIContent _cItemEspOn, _cItemEspOff;
-		private static GUIContent _cPerfOn, _cPerfOff;
-		private static GUIContent _cAmmoHudOn, _cAmmoHudOff;
+		private static GUIContent _cPerfTab;
 		private static GUIContent _cDiffEasy, _cDiffDefault, _cDiffHard;
-		private static GUIContent _cFFOn, _cFFOff;
-		private static GUIContent _cFreeOn, _cFreeOff;
 		private static GUIContent _cFullRestore;
 		private static GUIContent _cSkins, _cAchUnlock, _cAchLock, _cFinish;
+		private static GUIContent _cSellAction;
 		private static GUIContent _cCasinoHint, _cReelHint, _cBiteHint, _cWeightHint, _cSearchHint;
 		private static GUIContent _cMoneySection, _cTpSection, _cCreatureSection, _cRulesSection, _cProgressSection;
+		private static GUIContent _cScaleLabel;
 
 		internal static void Init(Plugin plugin)
 		{
 			_plugin = plugin;
 			_moneyInput = Plugin.MoneyAmount.Value.ToString();
 
-			_title = Ui.GC("鱼力全开 · 作弊菜单 v2.1", "How to Fish · Cheat Menu v2.1");
-			_close = new GUIContent("X");
+			_title = Ui.GC("鱼力全开 · 作弊菜单", "How to Fish · Cheat Menu");
+			_close = new GUIContent("✕");
+			_versionChip = new GUIContent("v" + Plugin.PluginVersion);
 			_tabs = new[]
 			{
 				Ui.GC("玩家", "Player"),
@@ -111,81 +101,63 @@ namespace HTF.CheatMenu
 
 			string host = Ui.HostSuffix;
 			_cCheats = Ui.GC("开启游戏内置作弊", "Enable built-in cheats");
-			_cGodOn = H(Ui.GC("上帝模式：开", "God mode: ON"), host);
-			_cGodOff = H(Ui.GC("上帝模式：关", "God mode: OFF"), host);
-			_cOneShotOn = H(Ui.GC("一击必杀：开", "One shot: ON"), host);
-			_cOneShotOff = H(Ui.GC("一击必杀：关", "One shot: OFF"), host);
-			_cAmmoOn = Ui.GC("无限弹匣：开", "Infinite mag: ON");
-			_cAmmoOff = Ui.GC("无限弹匣：关", "Infinite mag: OFF");
-			_cBiteOn = Ui.GC("秒咬钩：开", "Instant bite: ON");
-			_cBiteOff = Ui.GC("秒咬钩：关", "Instant bite: OFF");
-			_cHungerOn = H(Ui.GC("永不饥饿：开", "No hunger: ON"), host);
-			_cHungerOff = H(Ui.GC("永不饥饿：关", "No hunger: OFF"), host);
-			_cRouletteOn = H(Ui.GC("轮盘必胜：开", "Roulette always win: ON"), host);
-			_cRouletteOff = H(Ui.GC("轮盘必胜：关", "Roulette always win: OFF"), host);
-			_cSlotsOn = H(Ui.GC("老虎机必出传说：开", "Slots legendary: ON"), host);
-			_cSlotsOff = H(Ui.GC("老虎机必出传说：关", "Slots legendary: OFF"), host);
-			_cWeightOn = H(Ui.GC("满重量渔获：开", "Max weight: ON"), host);
-			_cWeightOff = H(Ui.GC("满重量渔获：关", "Max weight: OFF"), host);
-			_cAutoReelOn = Ui.GC("自动收线：开（钩上有鱼才收）", "Auto reel: ON (fish hooked)");
-			_cAutoReelOff = Ui.GC("自动收线：关", "Auto reel: OFF");
-			_cNoRecoilOn = Ui.GC("无后座：开", "No recoil: ON");
-			_cNoRecoilOff = Ui.GC("无后座：关", "No recoil: OFF");
-			_cRapidOn = Ui.GC("极速射击：开", "Rapid fire: ON");
-			_cRapidOff = Ui.GC("极速射击：关", "Rapid fire: OFF");
-			_cJournalComplete = H(Ui.GC("图鉴全收集（含闪光）", "Complete journal (incl. drip)"), host);
-			_cScaleLabel = Ui.GC("界面缩放", "UI scale");
+			_cGod = H(Ui.GC("上帝模式", "God mode"), host);
+			_cOneShot = H(Ui.GC("一击必杀", "One shot"), host);
+			_cAmmo = Ui.GC("无限弹匣", "Infinite mag");
+			_cNoRecoil = Ui.GC("无后座", "No recoil");
+			_cRapid = Ui.GC("极速射击", "Rapid fire");
+			_cHunger = H(Ui.GC("永不饥饿", "No hunger"), host);
+			_cBite = Ui.GC("秒咬钩", "Instant bite");
+			_cAutoReel = Ui.GC("自动收线（钩上有鱼才收）", "Auto reel (fish hooked)");
+			_cWeight = H(Ui.GC("满重量渔获", "Max weight"), host);
+			_cRoulette = H(Ui.GC("轮盘必胜", "Roulette always win"), host);
+			_cSlots = H(Ui.GC("老虎机必出传说", "Slots legendary"), host);
 
 			_cSpeed = BuildCycle(Plugin.SpeedOptions, "移速倍率", "Speed");
 			_cJump = BuildCycle(Plugin.JumpOptions, "跳跃倍率", "Jump");
 			_cSell = BuildCycle(Plugin.SellOptions, "卖鱼价值", "Sell worth");
+			_cSellAction = H(Ui.GC("卖鱼价值倍率", "Sell worth multiplier"), host);
 
 			_cDollar = Ui.GC("美元 $", "USD $");
 			_cEuro = Ui.GC("欧元 €", "EUR €");
 			_cSetMoney = H(Ui.GC("设定余额", "Set balance"), host);
-			_cAddMoney = H(Ui.GC("加钱", "Add money"), host);
+			_cAddMoney = Ui.GC("加钱", "Add money");
 
 			_cTpPrev = Ui.GC("← 上一岛", "← Prev");
 			_cTpNext = Ui.GC("下一岛 →", "Next →");
 			_cTpMini = H(Ui.GC("随机小岛", "Random mini island"), host);
 			_cTpGo = Ui.GC("传送", "Go");
-			_cIslandMinus = new GUIContent("-");
-			_cIslandPlus = new GUIContent("+");
+			_cIslandMinus = new GUIContent("－");
+			_cIslandPlus = new GUIContent("＋");
 
 			_cKillBoss = H(Ui.GC("秒杀 Boss", "Kill boss"), host);
-			_cKillAlive = H(Ui.GC("击杀全部活物（稍后自动补怪）", "Kill all alive (auto respawn)"), host);
-			_cClearJournal = H(Ui.GC("清空图鉴击杀记录", "Clear journal records"), host);
+			_cKillAlive = H(Ui.GC("击杀全部活物", "Kill all alive"), host);
+			_cClearJournal = H(Ui.GC("清空图鉴", "Clear journal"), host);
+			_cJournalComplete = H(Ui.GC("图鉴全收集", "Complete journal"), host);
 			_cSpawnHeader = Ui.GC("生成器（仅主机）", "Spawner (host)");
 			_cDrip = Ui.GC("闪光", "Drip");
 			_cDead = Ui.GC("死亡", "Dead");
-			_cSearchHint = Ui.GC("在搜索框输入 prefab 名过滤（◆=生物）", "Type prefab name to filter (◆=creature)");
+			_cSearchHint = Ui.GC("输入 prefab 名过滤（◆ = 生物）", "Type prefab name to filter (◆ = creature)");
 
-			_cEspOn = Ui.GC("鱼群雷达：开", "Fish radar: ON");
-			_cEspOff = Ui.GC("鱼群雷达：关", "Fish radar: OFF");
-			_cEspNamesOn = Ui.GC("雷达名字：显示", "Radar names: ON");
-			_cEspNamesOff = Ui.GC("雷达名字：隐藏", "Radar names: OFF");
-			_cEspWorthOn = Ui.GC("雷达显示价值：开", "Radar worth: ON");
-			_cEspWorthOff = Ui.GC("雷达显示价值：关", "Radar worth: OFF");
-			_cItemEspOn = Ui.GC("物品雷达：开", "Item radar: ON");
-			_cItemEspOff = Ui.GC("物品雷达：关", "Item radar: OFF");
-			_cPerfOn = Ui.GC("性能监视：开", "Perf overlay: ON");
-			_cPerfOff = Ui.GC("性能监视：关", "Perf overlay: OFF");
-			_cAmmoHudOn = Ui.GC("弹药显示：开", "Ammo HUD: ON");
-			_cAmmoHudOff = Ui.GC("弹药显示：关", "Ammo HUD: OFF");
+			_cEsp = Ui.GC("鱼群雷达", "Fish radar");
+			_cEspNames = Ui.GC("雷达名字", "Radar names");
+			_cEspWorth = Ui.GC("雷达显示价值", "Radar worth");
+			_cItemEsp = Ui.GC("物品雷达", "Item radar");
+			_cPerf = Ui.GC("性能监视", "Perf overlay");
+			_cAmmoHud = Ui.GC("弹药显示", "Ammo HUD");
+			_cPerfTab = Ui.GC("性能监视", "Perf overlay");
 
 			_cDiffEasy = Ui.GC("简单", "Easy");
 			_cDiffDefault = Ui.GC("默认", "Default");
 			_cDiffHard = Ui.GC("困难", "Hard");
-			_cFFOn = H(Ui.GC("友方伤害：开", "Friendly fire: ON"), host);
-			_cFFOff = H(Ui.GC("友方伤害：关", "Friendly fire: OFF"), host);
-			_cFreeOn = H(Ui.GC("免费购物：开", "Free shopping: ON"), host);
-			_cFreeOff = H(Ui.GC("免费购物：关", "Free shopping: OFF"), host);
+			_cFF = H(Ui.GC("友方伤害", "Friendly fire"), host);
+			_cFree = H(Ui.GC("免费购物", "Free shopping"), host);
 			_cFullRestore = H(Ui.GC("满状态（血量/饱食/毒/火）", "Full restore (hp/food/poison/fire)"), host);
 
 			_cSkins = H(Ui.GC("解锁全部皮肤", "Unlock all skins"), host);
 			_cAchUnlock = H(Ui.GC("解锁全部成就", "Unlock achievements"), host);
 			_cAchLock = H(Ui.GC("锁定全部成就", "Lock achievements"), host);
-			_cFinish = H(Ui.GC("结束本局（存档结算）", "Finish game (end screen)"), host);
+			_cFinish = H(Ui.GC("结束本局（存档结算）", "Finish game"), host);
 
 			_cCasinoHint = Ui.GC("轮盘：下注后开奖前开启；老虎机：拉杆前开启（仅主机）",
 				"Roulette: enable after bet; Slots: before rolling (host only)");
@@ -199,6 +171,7 @@ namespace HTF.CheatMenu
 			_cCreatureSection = Ui.GC("生物", "Creatures");
 			_cRulesSection = Ui.GC("服务器规则", "Server rules");
 			_cProgressSection = Ui.GC("进度", "Progress");
+			_cScaleLabel = Ui.GC("界面缩放", "UI scale");
 		}
 
 		private static GUIContent H(GUIContent c, string hostSuffix)
@@ -231,6 +204,7 @@ namespace HTF.CheatMenu
 			Ui.EnsureStyles();
 			if (_menuOpen)
 			{
+				Ui.DrawShadow(_winRect, 16f * Ui.Scale);
 				_winRect = GUI.Window(WinId, _winRect, WindowFunc, GUIContent.none, Ui.Win);
 			}
 		}
@@ -240,20 +214,29 @@ namespace HTF.CheatMenu
 			float s = Ui.Scale;
 			float w = _winRect.width;
 
-			// ---- 标题栏 ----
+			// ---- 标题栏（渐变 + 徽章） ----
 			Rect header = new Rect(1f, 1f, w - 2f, Ui.HeaderH * s);
 			GUI.Box(header, GUIContent.none, Ui.Header);
-			Rect titleR = new Rect(Ui.Pad * s, 0f, w - 90f * s, header.height);
+			Rect titleR = new Rect(Ui.Pad * s, 0f, w - 250f * s, header.height);
 			GUI.Label(titleR, _title, Ui.Title);
+
 			if (!_hostStatusBuilt)
 			{
-				bool hostNow = CheatCore.IsServer;
-				string zh = Ui.UseZh ? (hostNow ? "主机" : "客户端") : (hostNow ? "HOST" : "CLIENT");
-				_hostStatus = new GUIContent("<color=#" + (hostNow ? Ui.HostTagHex : "8a94a0") + ">" + zh + "</color>");
+				_hostNow = CheatCore.IsServer;
+				_hostText = Ui.UseZh ? (_hostNow ? "主机" : "客户端") : (_hostNow ? "HOST" : "CLIENT");
 				_hostStatusBuilt = true;
 			}
-			Rect statusR = new Rect(w - 78f * s, 0f, 42f * s, header.height);
-			GUI.Label(statusR, _hostStatus, Ui.Small);
+			// 主机徽章（圆点 + 文本）
+			float chipH = 20f * s;
+			Rect hostR = new Rect(w - 36f * s - 58f * s, (header.height - chipH) * 0.5f, 58f * s, chipH);
+			GUI.Box(hostR, GUIContent.none, Ui.Chip);
+			Ui.Dot(new Rect(hostR.x + 7f * s, hostR.y + (hostR.height - 6f * s) * 0.5f, 6f * s, 6f * s),
+				_hostNow ? Ui.ColOn : Ui.ColOff);
+			GUI.Label(new Rect(hostR.x + 16f * s, hostR.y, hostR.width - 18f * s, hostR.height), _hostText, Ui.Small);
+			// 版本徽章
+			Rect verR = new Rect(hostR.x - 8f * s - 56f * s, hostR.y, 56f * s, chipH);
+			GUI.Label(verR, _versionChip, Ui.Chip);
+			// 关闭按钮
 			Rect closeR = new Rect(w - 32f * s, (header.height - 24f * s) * 0.5f, 24f * s, 24f * s);
 			if (GUI.Button(closeR, _close, Ui.Tab))
 			{
@@ -275,7 +258,7 @@ namespace HTF.CheatMenu
 
 			// ---- 内容（外层滚动；内容高度用上一帧收敛值，一帧内稳定） ----
 			float top = tabsR.y + tabsR.height + 8f * s;
-			float viewH = _winRect.height - top - 34f * s;
+			float viewH = _winRect.height - top - 36f * s;
 			Rect viewR = new Rect(Ui.Pad * s, top, w - Ui.Pad * 2f * s, viewH);
 			float contentH = Mathf.Max(_pageHeights[_tab], viewH);
 			// scrollView 样式的悬停/聚焦背景已在 Ui.EnsureStyles 清空（游戏皮肤污染源）
@@ -294,8 +277,13 @@ namespace HTF.CheatMenu
 			GUI.EndScrollView();
 			_scrolls[_tab] = scroll;
 
-			// ---- 底栏 ----
-			Rect footer = new Rect(Ui.Pad * s, _winRect.height - 28f * s, w - Ui.Pad * 2f * s, 20f * s);
+			// ---- 底栏（上缘细分隔线） ----
+			float footY = _winRect.height - 30f * s;
+			Color old = GUI.color;
+			GUI.color = new Color(1f, 1f, 1f, 0.07f);
+			GUI.DrawTexture(new Rect(6f * s, footY - 3f * s, w - 12f * s, 1f), Texture2D.whiteTexture);
+			GUI.color = old;
+			Rect footer = new Rect(Ui.Pad * s, footY, w - Ui.Pad * 2f * s, 22f * s);
 			GUI.Label(footer, Plugin.FooterText, Ui.Footer);
 
 			GUI.DragWindow(new Rect(0f, 0f, w, header.height));
@@ -305,36 +293,43 @@ namespace HTF.CheatMenu
 		private static void DrawPlayer()
 		{
 			float s = Ui.Scale;
-			if (Ui.Button(_cCheats))
+			bool host = CheatCore.IsServer;
+
+			if (Ui.Ghost(_cCheats))
 			{
 				CheatCore.EnableCheats();
 				CheatCore.Say(Msg.Done);
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.GodOn ? _cGodOn : _cGodOff, CheatCore.GodOn, CheatCore.IsServer))
+			if (Ui.ToggleRow(_cGod, CheatCore.GodOn, host))
 			{
 				CheatCore.ToggleGod();
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.OneShotOn ? _cOneShotOn : _cOneShotOff, CheatCore.OneShotOn, CheatCore.IsServer))
+			if (Ui.ToggleRow(_cOneShot, CheatCore.OneShotOn, host))
 			{
 				CheatCore.ToggleOneShot();
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.InfiniteAmmo ? _cAmmoOn : _cAmmoOff, CheatCore.InfiniteAmmo))
+			if (Ui.ToggleRow(_cAmmo, CheatCore.InfiniteAmmo))
 			{
 				CheatCore.InfiniteAmmo = !CheatCore.InfiniteAmmo;
 				CheatCore.Say(CheatCore.InfiniteAmmo ? Msg.AmmoOn : Msg.AmmoOff);
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.NoRecoil ? _cNoRecoilOn : _cNoRecoilOff, CheatCore.NoRecoil))
+			if (Ui.ToggleRow(_cNoRecoil, CheatCore.NoRecoil))
 			{
 				CheatCore.NoRecoil = !CheatCore.NoRecoil;
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.RapidFire ? _cRapidOn : _cRapidOff, CheatCore.RapidFire))
+			if (Ui.ToggleRow(_cRapid, CheatCore.RapidFire))
 			{
 				CheatCore.RapidFire = !CheatCore.RapidFire;
+			}
+			Ui.Next();
+			if (Ui.ToggleRow(_cHunger, CheatCore.HungerFreeze, host))
+			{
+				CheatCore.HungerFreeze = !CheatCore.HungerFreeze;
 			}
 			Ui.Next();
 			if (Ui.Button(_cSpeed[Plugin.SpeedIndex]))
@@ -347,18 +342,10 @@ namespace HTF.CheatMenu
 				Plugin.CycleJump();
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.HungerFreeze ? _cHungerOn : _cHungerOff, CheatCore.HungerFreeze, CheatCore.IsServer))
-			{
-				CheatCore.HungerFreeze = !CheatCore.HungerFreeze;
-			}
-			Ui.Next();
-			Ui.LabelRow(_cBiteHint, Ui.Small);
-			Ui.Next();
 
 			Ui.Gap();
 			Ui.SectionRow(_cMoneySection);
 			Ui.Next();
-			bool host = CheatCore.IsServer;
 
 			Rect r1 = Ui.Slice(0f, 0.49f);
 			Rect r2 = Ui.Slice(0.51f, 0.49f);
@@ -372,20 +359,20 @@ namespace HTF.CheatMenu
 			}
 			Ui.Next();
 
-			Rect fieldR = Ui.Slice(0f, 0.62f);
+			Rect fieldR = Ui.Slice(0f, 0.60f);
 			string edited = GUI.TextField(fieldR, _moneyInput, Ui.Field);
 			if (!ReferenceEquals(edited, _moneyInput))
 			{
 				_moneyInput = edited;
 			}
-			Rect addR = Ui.Slice(0.64f, 0.36f);
-			if (GUI.Button(addR, _cAddMoney, host ? Ui.BtnPrimary : Ui.BtnDisabled) && host && int.TryParse(_moneyInput, out int amt))
+			Rect addR = Ui.Slice(0.62f, 0.38f);
+			if (Ui.Primary(_cAddMoney, host) && host && int.TryParse(_moneyInput, out int amt))
 			{
 				CheatCore.AddMoney(amt);
 			}
 			Ui.Next();
 
-			if (Ui.Button(_cSetMoney, host ? Ui.Btn : Ui.BtnDisabled) && host && int.TryParse(_moneyInput, out int set))
+			if (Ui.Ghost(_cSetMoney, host) && host && int.TryParse(_moneyInput, out int set))
 			{
 				CheatCore.SetMoney(set);
 			}
@@ -403,16 +390,16 @@ namespace HTF.CheatMenu
 			Ui.Next();
 			Rect half1 = Ui.Slice(0f, 0.49f);
 			Rect half2 = Ui.Slice(0.51f, 0.49f);
-			if (GUI.Button(half1, _cTpPrev, Ui.Btn))
+			if (GUI.Button(half1, _cTpPrev, Ui.BtnGhost))
 			{
 				CheatCore.TpIsland(true);
 			}
-			if (GUI.Button(half2, _cTpNext, Ui.Btn))
+			if (GUI.Button(half2, _cTpNext, Ui.BtnGhost))
 			{
 				CheatCore.TpIsland(false);
 			}
 			Ui.Next();
-			if (Ui.Button(_cTpMini, host))
+			if (Ui.Ghost(_cTpMini, host))
 			{
 				CheatCore.TpRandomMini();
 			}
@@ -431,11 +418,11 @@ namespace HTF.CheatMenu
 			Rect labelR = Ui.Slice(0.14f, 0.32f);
 			Rect plusR = Ui.Slice(0.48f, 0.12f);
 			Rect goR = Ui.Slice(0.62f, 0.38f);
-			if (GUI.Button(minusR, _cIslandMinus, Ui.Tab) && _mainIslands != null && _mainIslands.Length > 0)
+			if (GUI.Button(minusR, _cIslandMinus, Ui.BtnGhost) && _mainIslands != null && _mainIslands.Length > 0)
 			{
 				_islandSel = (_islandSel + _mainIslands.Length - 1) % _mainIslands.Length;
 			}
-			if (GUI.Button(plusR, _cIslandPlus, Ui.Tab) && _mainIslands != null && _mainIslands.Length > 0)
+			if (GUI.Button(plusR, _cIslandPlus, Ui.BtnGhost) && _mainIslands != null && _mainIslands.Length > 0)
 			{
 				_islandSel = (_islandSel + 1) % _mainIslands.Length;
 			}
@@ -447,7 +434,7 @@ namespace HTF.CheatMenu
 					_islandLabel = new GUIContent((Ui.UseZh ? "岛 " : "Island ") + _mainIslands[sel]);
 				}
 				GUI.Label(labelR, _islandLabel, Ui.Value);
-				if (GUI.Button(goR, _cTpGo, host ? Ui.BtnPrimary : Ui.BtnDisabled) && host)
+				if (Ui.Primary(_cTpGo, host) && host)
 				{
 					CheatCore.TpIsland(_mainIslands[sel]);
 				}
@@ -457,12 +444,13 @@ namespace HTF.CheatMenu
 			Ui.Gap();
 			Ui.SectionRow(_cCreatureSection);
 			Ui.Next();
-			if (Ui.Button(_cKillBoss, host))
+			Rect c1 = Ui.Slice(0f, 0.49f);
+			Rect c2 = Ui.Slice(0.51f, 0.49f);
+			if (GUI.Button(c1, _cKillBoss, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.KillBoss();
 			}
-			Ui.Next();
-			if (Ui.Button(_cKillAlive, host))
+			if (GUI.Button(c2, _cKillAlive, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				if (CheatCore.KillAllAliveCreatures())
 				{
@@ -474,13 +462,14 @@ namespace HTF.CheatMenu
 				}
 			}
 			Ui.Next();
-			if (Ui.Button(_cClearJournal, host))
+			Rect c3 = Ui.Slice(0f, 0.49f);
+			Rect c4 = Ui.Slice(0.51f, 0.49f);
+			if (GUI.Button(c3, _cClearJournal, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.SetAllCreaturesKilled(false, false);
 				CheatCore.Say(Msg.Done);
 			}
-			Ui.Next();
-			if (Ui.Button(_cJournalComplete, host))
+			if (GUI.Button(c4, _cJournalComplete, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.CompleteJournal();
 			}
@@ -556,12 +545,12 @@ namespace HTF.CheatMenu
 		{
 			float s = Ui.Scale;
 			bool host = CheatCore.IsServer;
-			if (Ui.Toggle(CheatCore.RouletteWin ? _cRouletteOn : _cRouletteOff, CheatCore.RouletteWin, host))
+			if (Ui.ToggleRow(_cRoulette, CheatCore.RouletteWin, host))
 			{
 				CheatCore.RouletteWin = !CheatCore.RouletteWin;
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.SlotsLegendary ? _cSlotsOn : _cSlotsOff, CheatCore.SlotsLegendary, host))
+			if (Ui.ToggleRow(_cSlots, CheatCore.SlotsLegendary, host))
 			{
 				CheatCore.SlotsLegendary = !CheatCore.SlotsLegendary;
 				CheatCore.ApplySlotsCheat();
@@ -576,13 +565,13 @@ namespace HTF.CheatMenu
 		private static void DrawFishing()
 		{
 			float s = Ui.Scale;
-			if (Ui.Toggle(CheatCore.InstantBite ? _cBiteOn : _cBiteOff, CheatCore.InstantBite))
+			if (Ui.ToggleRow(_cBite, CheatCore.InstantBite))
 			{
 				CheatCore.InstantBite = !CheatCore.InstantBite;
 				CheatCore.Say(CheatCore.InstantBite ? Msg.BiteOn : Msg.BiteOff);
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.AutoReel ? _cAutoReelOn : _cAutoReelOff, CheatCore.AutoReel))
+			if (Ui.ToggleRow(_cAutoReel, CheatCore.AutoReel))
 			{
 				CheatCore.AutoReel = !CheatCore.AutoReel;
 			}
@@ -592,7 +581,7 @@ namespace HTF.CheatMenu
 				Ui.LabelRow(_cReelHint, Ui.Small);
 				Ui.Next();
 			}
-			if (Ui.Toggle(CheatCore.MaxWeight ? _cWeightOn : _cWeightOff, CheatCore.MaxWeight, CheatCore.IsServer))
+			if (Ui.ToggleRow(_cWeight, CheatCore.MaxWeight, CheatCore.IsServer))
 			{
 				CheatCore.MaxWeight = !CheatCore.MaxWeight;
 			}
@@ -607,32 +596,32 @@ namespace HTF.CheatMenu
 		// ================= 显示 =================
 		private static void DrawDisplay()
 		{
-			if (Ui.Toggle(Overlays.EspEnabled ? _cEspOn : _cEspOff, Overlays.EspEnabled))
+			if (Ui.ToggleRow(_cEsp, Overlays.EspEnabled))
 			{
 				Overlays.ToggleEsp();
 			}
 			Ui.Next();
-			if (Ui.Toggle(Plugin.EspShowNames.Value ? _cEspNamesOn : _cEspNamesOff, Plugin.EspShowNames.Value))
+			if (Ui.ToggleRow(_cEspNames, Plugin.EspShowNames.Value))
 			{
 				Plugin.EspShowNames.Value = !Plugin.EspShowNames.Value;
 			}
 			Ui.Next();
-			if (Ui.Toggle(Plugin.EspShowWorth.Value ? _cEspWorthOn : _cEspWorthOff, Plugin.EspShowWorth.Value))
+			if (Ui.ToggleRow(_cEspWorth, Plugin.EspShowWorth.Value))
 			{
 				Plugin.EspShowWorth.Value = !Plugin.EspShowWorth.Value;
 			}
 			Ui.Next();
-			if (Ui.Toggle(Plugin.ItemEspEnabled.Value ? _cItemEspOn : _cItemEspOff, Plugin.ItemEspEnabled.Value))
+			if (Ui.ToggleRow(_cItemEsp, Plugin.ItemEspEnabled.Value))
 			{
 				Plugin.ItemEspEnabled.Value = !Plugin.ItemEspEnabled.Value;
 			}
 			Ui.Next();
-			if (Ui.Toggle(Plugin.AmmoHudEnabled.Value ? _cAmmoHudOn : _cAmmoHudOff, Plugin.AmmoHudEnabled.Value))
+			if (Ui.ToggleRow(_cAmmoHud, Plugin.AmmoHudEnabled.Value))
 			{
 				Plugin.AmmoHudEnabled.Value = !Plugin.AmmoHudEnabled.Value;
 			}
 			Ui.Next();
-			if (Ui.Toggle(Overlays.PerfEnabled ? _cPerfOn : _cPerfOff, Overlays.PerfEnabled))
+			if (Ui.ToggleRow(_cPerfTab, Overlays.PerfEnabled))
 			{
 				Overlays.TogglePerf();
 			}
@@ -691,22 +680,22 @@ namespace HTF.CheatMenu
 			Ui.Next();
 
 			bool ff = ServerSettings.Instance && ServerSettings.UseFriendlyFire;
-			if (Ui.Toggle(ff ? _cFFOn : _cFFOff, ff, host))
+			if (Ui.ToggleRow(_cFF, ff, host))
 			{
 				CheatCore.ToggleFriendlyFire(!ff);
 			}
 			Ui.Next();
-			if (Ui.Toggle(CheatCore.FreeShopping ? _cFreeOn : _cFreeOff, CheatCore.FreeShopping, host))
+			if (Ui.ToggleRow(_cFree, CheatCore.FreeShopping, host))
 			{
 				CheatCore.FreeShopping = !CheatCore.FreeShopping;
 			}
 			Ui.Next();
-			if (Ui.Button(_cSell[Plugin.SellIndex], host ? Ui.Btn : Ui.BtnDisabled) && host)
+			if (Ui.Button(_cSell[Plugin.SellIndex], host) && host)
 			{
 				Plugin.CycleSell();
 			}
 			Ui.Next();
-			if (Ui.Button(_cFullRestore, host))
+			if (Ui.Ghost(_cFullRestore, host))
 			{
 				CheatCore.FullRestore();
 			}
@@ -715,22 +704,24 @@ namespace HTF.CheatMenu
 			Ui.Gap();
 			Ui.SectionRow(_cProgressSection);
 			Ui.Next();
-			if (Ui.Button(_cSkins, host))
+			Rect p1 = Ui.Slice(0f, 0.49f);
+			Rect p2 = Ui.Slice(0.51f, 0.49f);
+			if (GUI.Button(p1, _cSkins, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.UnlockAllSkins();
 			}
-			Ui.Next();
-			if (Ui.Button(_cAchUnlock, host))
+			if (GUI.Button(p2, _cAchUnlock, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.UnlockAchievements();
 			}
 			Ui.Next();
-			if (Ui.Button(_cAchLock, host))
+			Rect p3 = Ui.Slice(0f, 0.49f);
+			Rect p4 = Ui.Slice(0.51f, 0.49f);
+			if (GUI.Button(p3, _cAchLock, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.LockAchievements();
 			}
-			Ui.Next();
-			if (Ui.Button(_cFinish, host))
+			if (GUI.Button(p4, _cFinish, host ? Ui.BtnGhost : Ui.BtnDisabled))
 			{
 				CheatCore.FinishGame();
 			}

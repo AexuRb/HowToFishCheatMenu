@@ -17,7 +17,7 @@ namespace HTF.CheatMenu
 	{
 		public const string PluginGuid = "com.htf.cheatmenu";
 		public const string PluginName = "HowToFishCheatMenu";
-		public const string PluginVersion = "2.1.0";
+		public const string PluginVersion = "2.2.0";
 
 		internal static ManualLogSource Log;
 
