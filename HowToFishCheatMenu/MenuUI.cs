@@ -6,18 +6,21 @@ using UnityEngine;
 namespace HTF.CheatMenu
 {
 	/// <summary>
-	/// UI 4.0 "Candy Dock"（E 坞式呼出 × H 糖果街机）：
-	/// - F1 收起/展开底部糖果坞（六分类厚描边按钮，含"有开关已开启"薄荷圆点）
-	/// - 点坞按钮从上方弹出糖果面板（标签牌骑上沿 + 墨描边滑块 + 硬阴影按钮）
+	/// UI 4.1 "Candy"（H 糖果街机）：单一糖果窗口。
+	/// 厚墨水描边 + 硬阴影 + 芯片页签 + 标签牌徽章 + 糖果滑块/按钮。
 	/// 规避 GC：所有 GUIContent / 纹理 / 样式一次构建复用；布局用 Ui 静态游标推进。
 	/// </summary>
 	internal static class MenuUI
 	{
-		private static bool _dockOpen;
-		private static int _openTab = -1;
-		private static float _panelAnim;
+		private const int WinId = 0x48544633;
+		private static bool _menuOpen;
+		private static int _tab;
+		private static Rect _winRect = new Rect(40f, 40f, 470f, 660f);
+		private static readonly GUI.WindowFunction WindowFunc = DrawWindow;
 		private static readonly float[] _pageHeights = new float[6];
 		private static readonly Vector2[] _scrolls = new Vector2[6];
+
+		private static Plugin _plugin;
 
 		// ---- 金钱输入 ----
 		private static string _moneyInput = "10000";
@@ -38,16 +41,17 @@ namespace HTF.CheatMenu
 		private static int _islandSel = -1;
 		private static GUIContent _islandLabel = GUIContent.none;
 
-		// ---- 主机状态（面板打开时刷新一次） ----
+		// ---- 主机状态（打开菜单时刷新一次） ----
 		private static bool _hostStatusBuilt;
 		private static bool _hostNow;
 		private static string _hostText = string.Empty;
 
-		internal static bool MenuOpen => _dockOpen;
-		internal static bool PanelOpen => _dockOpen && _openTab >= 0;
+		internal static bool MenuOpen => _menuOpen;
+		internal static bool PanelOpen => _menuOpen;
 
 		// ---- 标签缓存 ----
 		private static GUIContent _close;
+		private static GUIContent _logo;
 		private static GUIContent[] _tabs;
 		private static GUIContent _cCheats;
 		private static GUIContent _cGod, _cOneShot, _cAmmo, _cNoRecoil, _cRapid, _cHunger;
@@ -68,13 +72,14 @@ namespace HTF.CheatMenu
 		private static GUIContent _cCasinoHint, _cReelHint, _cBiteHint, _cWeightHint, _cSearchHint;
 		private static GUIContent _cMoneySection, _cTpSection, _cCreatureSection, _cRulesSection, _cProgressSection;
 		private static GUIContent _cScaleLabel;
-		private static GUIContent _cF1Hint;
 
 		internal static void Init(Plugin plugin)
 		{
+			_plugin = plugin;
 			_moneyInput = Plugin.MoneyAmount.Value.ToString();
 
 			_close = new GUIContent("✕");
+			_logo = new GUIContent("鱼");
 			_tabs = new[]
 			{
 				Ui.GC("玩家", "Player"),
@@ -156,7 +161,6 @@ namespace HTF.CheatMenu
 			_cRulesSection = Ui.GC("服务器规则", "Server rules");
 			_cProgressSection = Ui.GC("进度", "Progress");
 			_cScaleLabel = Ui.GC("界面缩放", "UI scale");
-			_cF1Hint = new GUIContent(Ui.UseZh ? "F1 收起" : "F1 hide");
 		}
 
 		private static GUIContent H(GUIContent c, string hostSuffix)
@@ -176,18 +180,17 @@ namespace HTF.CheatMenu
 
 		internal static void ToggleMenu()
 		{
-			_dockOpen = !_dockOpen;
-			_openTab = -1;
-			if (_dockOpen)
+			_menuOpen = !_menuOpen;
+			if (_menuOpen)
 			{
 				EnsureSpawnList();
 			}
 		}
 
-		/// <summary>坞开启时按数字键 1-6 直达/收起对应面板。</summary>
+		/// <summary>窗口开启时按数字键 1-6 直达对应页签。</summary>
 		internal static void HandleNumberKeys()
 		{
-			if (!_dockOpen)
+			if (!_menuOpen)
 			{
 				return;
 			}
@@ -195,8 +198,7 @@ namespace HTF.CheatMenu
 			{
 				if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i)))
 				{
-					_openTab = _openTab == i ? -1 : i;
-					_hostStatusBuilt = false;
+					_tab = i;
 				}
 			}
 		}
@@ -204,113 +206,65 @@ namespace HTF.CheatMenu
 		internal static void OnGUI()
 		{
 			Ui.EnsureStyles();
-			if (!_dockOpen)
+			if (_menuOpen)
 			{
-				return;
-			}
-			DrawDock();
-			if (_openTab >= 0)
-			{
-				_panelAnim = Mathf.MoveTowards(_panelAnim, 1f, Time.unscaledDeltaTime * 8f);
-				DrawPanel();
-			}
-			else
-			{
-				_panelAnim = 0f;
+				Ui.HardShadow(_winRect, 6f * Ui.Scale);
+				_winRect = GUI.Window(WinId, _winRect, WindowFunc, GUIContent.none, Ui.Panel);
 			}
 		}
 
-		// ================= 底部糖果坞 =================
-		private static void DrawDock()
+		private static void DrawWindow(int id)
 		{
 			float s = Ui.Scale;
-			float itemW = 72f * s, itemH = 42f * s, gap = 8f * s;
-			float dockW = 6 * itemW + 5 * gap + 20 * s;
-			float dockH = itemH + 16 * s;
-			Rect dr = new Rect((Screen.width - dockW) / 2f, Screen.height - dockH - 20f * s, dockW, dockH);
-			Ui.HardShadow(dr, 4.5f * s);
-			GUI.Box(dr, GUIContent.none, Ui.DockBg);
-			for (int i = 0; i < 6; i++)
-			{
-				Rect r = new Rect(dr.x + 10f * s + i * (itemW + gap), dr.y + 8f * s, itemW, itemH);
-				bool on = _openTab == i;
-				if (GUI.Button(r, _tabs[i], on ? Ui.DockItemOn : Ui.DockItem))
-				{
-					_openTab = on ? -1 : i;
-					_hostStatusBuilt = false;
-				}
-				if (TabHasOn(i))
-				{
-					Ui.Dot(new Rect(r.xMax - 8f * s, r.y - 4f * s, 11f * s, 11f * s), Ui.ColMint);
-				}
-			}
-		}
+			float w = _winRect.width;
 
-		/// <summary>该页签下是否有开关处于开启状态（坞位绿点提示）。</summary>
-		private static bool TabHasOn(int tab)
-		{
-			switch (tab)
-			{
-				case 0: return CheatCore.GodOn || CheatCore.OneShotOn || CheatCore.InfiniteAmmo || CheatCore.NoRecoil || CheatCore.RapidFire || CheatCore.HungerFreeze;
-				case 1: return _spawnDrip || _spawnDead;
-				case 2: return CheatCore.RouletteWin || CheatCore.SlotsLegendary;
-				case 3: return CheatCore.InstantBite || CheatCore.AutoReel || CheatCore.MaxWeight;
-				case 4: return Overlays.EspEnabled || Plugin.ItemEspEnabled.Value || Overlays.PerfEnabled;
-				default: return CheatCore.FreeShopping;
-			}
-		}
+			// ---- 页眉：logo + 标题 + 主机徽章 + 关闭 ----
+			Rect logoR = new Rect(12f * s, 9f * s, 40f * s, 40f * s);
+			Ui.HardShadow(logoR, 2.5f * s);
+			GUI.DrawTexture(logoR, Ui.TagTex(0));
+			GUI.Label(logoR, _logo, Ui.Tag);
+			Rect titleR = new Rect(60f * s, 0f, w - 250f * s, 56f * s);
+			GUI.Label(titleR, Ui.GC("鱼力全开 · 作弊菜单", "How to Fish · Cheat Menu"), Ui.Title);
 
-		// ================= 浮出面板 =================
-		private static void DrawPanel()
-		{
-			float s = Ui.Scale;
-			float pw = 584f * s, ph = 508f * s;
-			float px = (Screen.width - pw) / 2f;
-			float py = Screen.height - 62f * s - ph - 34f * s + (1f - _panelAnim) * 26f * s;
-			Rect pr = new Rect(px, py, pw, ph);
-
-			Ui.HardShadow(pr, 6f * s);
-			GUI.color = new Color(1f, 1f, 1f, _panelAnim);
-			GUI.Box(pr, GUIContent.none, Ui.Panel);
-
-			// 标签牌（骑上沿，按页配色）
-			float tagW = 132f * s, tagH = 34f * s;
-			Rect tagR = new Rect(pr.center.x - tagW / 2f, pr.y - tagH * 0.45f, tagW, tagH);
-			Ui.HardShadow(tagR, 3f * s);
-			GUI.DrawTexture(tagR, Ui.TagTex(_openTab));
-			GUI.Label(tagR, _tabs[_openTab], Ui.Tag);
-
-			// 左上：F1 提示徽章
-			Rect f1R = new Rect(pr.x + 12f * s, pr.y + 10f * s, 64f * s, 22f * s);
-			GUI.Box(f1R, GUIContent.none, Ui.Chip);
-			GUI.Label(f1R, _cF1Hint, Ui.Chip);
-			// 右上：主机徽章
 			if (!_hostStatusBuilt)
 			{
 				_hostNow = CheatCore.IsServer;
 				_hostText = Ui.UseZh ? (_hostNow ? "★ 主机" : "客户端") : (_hostNow ? "★ HOST" : "CLIENT");
 				_hostStatusBuilt = true;
 			}
-			Rect hostR = new Rect(pr.xMax - 12f * s - 78f * s, pr.y + 10f * s, 78f * s, 22f * s);
+			float chipH = 24f * s;
+			Rect hostR = new Rect(w - 134f * s, (56f * s - chipH) * 0.5f, 82f * s, chipH);
+			Ui.HardShadow(hostR, 2f * s);
 			GUI.Box(hostR, GUIContent.none, Ui.Chip);
-			Ui.Dot(new Rect(hostR.x + 7f * s, hostR.y + (hostR.height - 6f * s) * 0.5f, 6f * s, 6f * s), _hostNow ? Ui.ColMint : Ui.ColOff);
-			GUI.Label(new Rect(hostR.x + 16f * s, hostR.y, hostR.width - 18f * s, hostR.height), _hostText, Ui.Chip);
-			// 关闭按钮（标签牌右侧）
-			Rect closeR = new Rect(tagR.xMax + 10f * s, pr.y - 12f * s, 26f * s, 26f * s);
+			Ui.Dot(new Rect(hostR.x + 8f * s, hostR.y + (hostR.height - 7f * s) * 0.5f, 7f * s, 7f * s), _hostNow ? Ui.ColMint : Ui.ColOff);
+			GUI.Label(new Rect(hostR.x + 19f * s, hostR.y, hostR.width - 21f * s, hostR.height), _hostText, Ui.Chip);
+			Rect closeR = new Rect(w - 36f * s, (56f * s - 24f * s) * 0.5f, 24f * s, 24f * s);
 			Ui.HardShadow(closeR, 2f * s);
 			if (GUI.Button(closeR, _close, Ui.Tab))
 			{
-				_openTab = -1;
-				GUI.color = Color.white;
+				ToggleMenu();
 				return;
 			}
 
-			// 内容滚动
-			Rect view = new Rect(pr.x + Ui.Pad * s, pr.y + 40f * s, pr.width - Ui.Pad * 2f * s, pr.height - 52f * s);
-			float contentH = Mathf.Max(_pageHeights[_openTab], view.height);
-			Vector2 scroll = GUI.BeginScrollView(view, _scrolls[_openTab], new Rect(0f, 0f, view.width - 14f, contentH));
+			// ---- 芯片页签 ----
+			Rect chips = new Rect(Ui.Pad * s, 62f * s, w - Ui.Pad * 2f * s, 34f * s);
+			float cw = (chips.width - 5f * 7f * s) / 6f;
+			for (int i = 0; i < 6; i++)
+			{
+				Rect r = new Rect(chips.x + i * (cw + 7f * s), chips.y, cw, chips.height);
+				if (GUI.Button(r, _tabs[i], _tab == i ? Ui.TabActive : Ui.Tab))
+				{
+					_tab = i;
+				}
+			}
+
+			// ---- 内容滚动 ----
+			float top = chips.y + chips.height + 10f * s;
+			Rect view = new Rect(Ui.Pad * s, top, w - Ui.Pad * 2f * s, _winRect.height - top - 12f * s);
+			float contentH = Mathf.Max(_pageHeights[_tab], view.height);
+			Vector2 scroll = GUI.BeginScrollView(view, _scrolls[_tab], new Rect(0f, 0f, view.width - 14f, contentH));
 			Ui.BeginArea(0f, 4f * s, view.width - 14f);
-			switch (_openTab)
+			switch (_tab)
 			{
 				case 0: DrawPlayer(); break;
 				case 1: DrawWorld(); break;
@@ -319,10 +273,11 @@ namespace HTF.CheatMenu
 				case 4: DrawDisplay(); break;
 				default: DrawMisc(); break;
 			}
-			_pageHeights[_openTab] = Ui.CursorY + Ui.Pad * s;
+			_pageHeights[_tab] = Ui.CursorY + Ui.Pad * s;
 			GUI.EndScrollView();
-			_scrolls[_openTab] = scroll;
-			GUI.color = Color.white;
+			_scrolls[_tab] = scroll;
+
+			GUI.DragWindow(new Rect(0f, 0f, w, 56f * s));
 		}
 
 		// ================= 玩家 =================
