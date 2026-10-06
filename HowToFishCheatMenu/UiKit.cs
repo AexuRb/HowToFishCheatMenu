@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace HTF.CheatMenu
@@ -98,6 +99,7 @@ namespace HTF.CheatMenu
 		private static Texture2D _texShadowInk;
 		private static Texture2D _texWhite;
 		private static Texture2D _texSolid;
+		private static Texture2D _texCardWhite;
 
 		private static readonly Color[] TagColors =
 		{
@@ -151,6 +153,8 @@ namespace HTF.CheatMenu
 			_texChip = null; _texPillWhite = null; _texPillCoral = null; _texBtnWhite = null; _texBtnCoral = null;
 			_texBtnMint = null; _texBtnSky = null; _texBtnDisabled = null; _texSwitchOn = null; _texSwitchOff = null;
 			_texKnob = null; _texField = null; _texRowHover = null; _texShadowInk = null;
+			_texCardWhite = null;
+			_cardH.Clear();
 		}
 
 		internal static void EnsureStyles()
@@ -201,7 +205,24 @@ namespace HTF.CheatMenu
 			_texField = RoundedShape(ColWhite, (int)(12f * Scale), ColInk, 3, false, 0f);
 			_texRowHover = RoundedShape(new Color(1f, 0.79f, 0.24f, 0.16f), (int)(10f * Scale), null, 0, false, 0f);
 			_texShadowInk = RoundedShape(ColInk, rad, null, 0, false, 0f);
+			_texCardWhite = RoundedShape(ColWhite, (int)(16f * Scale), ColInk, 3, false, 0f);
 			_texWhite = Texture2D.whiteTexture;
+
+			// 标签牌宽度按样式实测（一次性的初始化期分配）
+			try
+			{
+				for (int i = 0; i < _plates.Count; i++)
+				{
+					_plateW[i] = Tag.CalcSize(_plates[i]).x + 26f * Scale;
+				}
+			}
+			catch (Exception)
+			{
+				for (int i = 0; i < _plates.Count; i++)
+				{
+					_plateW[i] = _plates[i].text.Length * 18f * Scale + 30f * Scale;
+				}
+			}
 
 			Panel = Base(_texCard, 13, ColInk, TextAnchor.UpperLeft, rad);
 			Panel.border = new RectOffset(rad, rad, rad, rad);
@@ -318,6 +339,11 @@ namespace HTF.CheatMenu
 				s.active.background = bg;
 				s.focused.background = bg;
 			}
+			// 显式字体：空字体会让 CalcSize 等测量 API 抛 NRE，也保证中文渲染一致
+			if (UiFont != null)
+			{
+				s.font = UiFont;
+			}
 			s.fontSize = fontSize;
 			s.normal.textColor = color;
 			s.hover.textColor = color;
@@ -398,6 +424,68 @@ namespace HTF.CheatMenu
 		private static Rect _cur;
 		private static float _left;
 		private static float _width;
+
+		// ---- 卡片（H：标签牌骑边的分组卡） ----
+		private static readonly List<GUIContent> _plates = new List<GUIContent>();
+		private static readonly List<int> _plateColor = new List<int>();
+		private static readonly List<float> _plateW = new List<float>();
+		private static readonly Dictionary<long, float> _cardH = new Dictionary<long, float>();
+		private static long _cardKeyBase;
+		private static int _cardIdx;
+		private struct AreaState { public Rect cur; public float left, width; }
+		private static readonly List<AreaState> _areaStack = new List<AreaState>(4);
+		private static Rect _cardRect;
+
+		/// <summary>注册分组卡标签牌（内容, TagColors 序号）。返回 plateIdx。</summary>
+		internal static int RegisterPlate(GUIContent content, int tagColorIdx)
+		{
+			_plates.Add(content);
+			_plateColor.Add(tagColorIdx);
+			_plateW.Add(100f);
+			return _plates.Count - 1;
+		}
+
+		/// <summary>每帧开头调用：卡高缓存按页签分段计数。</summary>
+		internal static void CardFrameReset(int tab)
+		{
+			_cardKeyBase = (long)tab * 1000;
+			_cardIdx = 0;
+		}
+
+		/// <summary>开始一张分组卡：白底 + 墨描边 + 硬阴影 + 骑边标签牌，切入卡内区域。</summary>
+		internal static void CardBegin(int plateIdx)
+		{
+			_cardIdx++;
+			long key = _cardKeyBase + _cardIdx;
+			float h = _cardH.TryGetValue(key, out float hh) ? hh : 150f * Scale;
+			_cardRect = new Rect(_left, _cur.y, _width, h);
+			HardShadow(_cardRect, 5f * Scale);
+			GUI.DrawTexture(_cardRect, _texCardWhite);
+			float plateH = 30f * Scale;
+			Rect plate = new Rect(_cardRect.x + 16f * Scale, _cardRect.y - plateH * 0.45f, _plateW[plateIdx], plateH);
+			HardShadow(plate, 2.5f * Scale);
+			GUI.DrawTexture(plate, TagTex(_plateColor[plateIdx]));
+			GUI.Label(plate, _plates[plateIdx], Tag);
+			_areaStack.Add(new AreaState { cur = _cur, left = _left, width = _width });
+			_left = _cardRect.x + 14f * Scale;
+			_width = _cardRect.width - 28f * Scale;
+			_cur = new Rect(_left, _cardRect.y + 24f * Scale, _width, RowH * Scale);
+		}
+
+		/// <summary>结束当前分组卡：实测高度入缓存，游标跳到卡下方。</summary>
+		internal static void CardEnd()
+		{
+			float bottom = _cur.y + 8f * Scale;
+			float h = bottom - _cardRect.y;
+			_cardH[_cardKeyBase + _cardIdx] = h;
+			AreaState st = _areaStack[_areaStack.Count - 1];
+			_areaStack.RemoveAt(_areaStack.Count - 1);
+			_cur = st.cur;
+			_left = st.left;
+			_width = st.width;
+			_cur.y = _cardRect.y + h + RowGap * Scale;
+			_cur.height = RowH * Scale;
+		}
 
 		internal static void BeginArea(float x, float y, float w)
 		{
@@ -482,7 +570,7 @@ namespace HTF.CheatMenu
 		}
 
 		/// <summary>
-		/// 开关行：整行可点，标签居左，右侧糖果滑块。返回是否被点击。
+		/// 开关行：整行可点，标签居左，右侧糖果滑块（加大加粗版）。返回是否被点击。
 		/// </summary>
 		internal static bool ToggleRow(GUIContent label, bool on, bool interactable = true)
 		{
@@ -492,9 +580,9 @@ namespace HTF.CheatMenu
 			{
 				GUI.DrawTexture(row, _texRowHover);
 			}
-			Rect labelRect = new Rect(row.x + 10f * Scale, row.y, row.width - 76f * Scale, row.height);
+			Rect labelRect = new Rect(row.x + 10f * Scale, row.y, row.width - 88f * Scale, row.height);
 			GUI.Label(labelRect, label, interactable ? Label : Dim);
-			Rect sw = new Rect(row.xMax - (44f + 10f) * Scale, row.y + (row.height - 19f * Scale) * 0.5f, 44f * Scale, 19f * Scale);
+			Rect sw = new Rect(row.xMax - (50f + 10f) * Scale, row.y + (row.height - 22f * Scale) * 0.5f, 50f * Scale, 22f * Scale);
 			Switch(sw, on);
 			return interactable && GUI.Button(row, GUIContent.none, GUIStyle.none);
 		}
@@ -502,10 +590,10 @@ namespace HTF.CheatMenu
 		/// <summary>糖果滑块开关（墨水描边 + 薄荷开启态）。</summary>
 		internal static void Switch(Rect r, bool on)
 		{
-			HardShadow(r, 2.5f * Scale);
+			HardShadow(r, 3f * Scale);
 			GUI.DrawTexture(r, on ? _texSwitchOn : _texSwitchOff);
-			float k = 15f * Scale;
-			Rect knob = new Rect(on ? r.xMax - k - 2f * Scale : r.x + 2f * Scale, r.y + (r.height - k) * 0.5f, k, k);
+			float k = 17f * Scale;
+			Rect knob = new Rect(on ? r.xMax - k - 3f * Scale : r.x + 3f * Scale, r.y + (r.height - k) * 0.5f, k, k);
 			GUI.DrawTexture(knob, _texKnob);
 		}
 
@@ -568,6 +656,12 @@ namespace HTF.CheatMenu
 		internal static GUIContent GC(string zh, string en)
 		{
 			return new GUIContent(UseZh ? zh : en);
+		}
+
+		/// <summary>标签牌等中英同文的内容用单参版本。</summary>
+		internal static GUIContent GC(string text)
+		{
+			return new GUIContent(text);
 		}
 
 		private static Font TryFont(string name)
