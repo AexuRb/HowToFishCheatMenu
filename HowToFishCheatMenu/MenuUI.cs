@@ -6,27 +6,18 @@ using UnityEngine;
 namespace HTF.CheatMenu
 {
 	/// <summary>
-	/// UI 3.0：单窗口 + 六页签（玩家/世界/赌场/钓鱼/显示/杂项）。
-	/// 视觉：渐变标题栏 + 状态徽章、iOS 式开关行、主/次按钮层级、窗口阴影描边。
-	/// 规避 GC 的关键点：
-	/// - 所有 GUIContent / GUIStyle 在初始化时创建并复用
-	/// - 布局用 Ui 静态游标推进，不走 GUILayout
-	/// - 运行期字符串只在状态变化时生成
+	/// UI 4.0 "Candy Dock"（E 坞式呼出 × H 糖果街机）：
+	/// - F1 收起/展开底部糖果坞（六分类厚描边按钮，含"有开关已开启"薄荷圆点）
+	/// - 点坞按钮从上方弹出糖果面板（标签牌骑上沿 + 墨描边滑块 + 硬阴影按钮）
+	/// 规避 GC：所有 GUIContent / 纹理 / 样式一次构建复用；布局用 Ui 静态游标推进。
 	/// </summary>
 	internal static class MenuUI
 	{
-		private const int WinId = 0x48544632;
-		private const float WinW = 430f;
-		private const float WinH = 690f;
-
-		private static bool _menuOpen;
-		private static int _tab;
-		private static Rect _winRect = new Rect(30f, 30f, WinW, WinH);
-		private static readonly GUI.WindowFunction WindowFunc = DrawWindow;
+		private static bool _dockOpen;
+		private static int _openTab = -1;
+		private static float _panelAnim;
 		private static readonly float[] _pageHeights = new float[6];
 		private static readonly Vector2[] _scrolls = new Vector2[6];
-
-		private static Plugin _plugin;
 
 		// ---- 金钱输入 ----
 		private static string _moneyInput = "10000";
@@ -47,16 +38,15 @@ namespace HTF.CheatMenu
 		private static int _islandSel = -1;
 		private static GUIContent _islandLabel = GUIContent.none;
 
-		// ---- 主机状态（打开菜单时刷新一次） ----
+		// ---- 主机状态（面板打开时刷新一次） ----
 		private static bool _hostStatusBuilt;
 		private static bool _hostNow;
 		private static string _hostText = string.Empty;
-		private static GUIContent _versionChip;
 
-		internal static bool MenuOpen => _menuOpen;
+		internal static bool MenuOpen => _dockOpen;
+		internal static bool PanelOpen => _dockOpen && _openTab >= 0;
 
 		// ---- 标签缓存 ----
-		private static GUIContent _title;
 		private static GUIContent _close;
 		private static GUIContent[] _tabs;
 		private static GUIContent _cCheats;
@@ -72,23 +62,19 @@ namespace HTF.CheatMenu
 		private static GUIContent _cTpPrev, _cTpNext, _cTpMini, _cTpGo, _cIslandMinus, _cIslandPlus;
 		private static GUIContent _cKillBoss, _cKillAlive, _cClearJournal, _cJournalComplete;
 		private static GUIContent _cSpawnHeader, _cDrip, _cDead;
-		private static GUIContent _cPerfTab;
 		private static GUIContent _cDiffEasy, _cDiffDefault, _cDiffHard;
 		private static GUIContent _cFullRestore;
 		private static GUIContent _cSkins, _cAchUnlock, _cAchLock, _cFinish;
-		private static GUIContent _cSellAction;
 		private static GUIContent _cCasinoHint, _cReelHint, _cBiteHint, _cWeightHint, _cSearchHint;
 		private static GUIContent _cMoneySection, _cTpSection, _cCreatureSection, _cRulesSection, _cProgressSection;
 		private static GUIContent _cScaleLabel;
+		private static GUIContent _cF1Hint;
 
 		internal static void Init(Plugin plugin)
 		{
-			_plugin = plugin;
 			_moneyInput = Plugin.MoneyAmount.Value.ToString();
 
-			_title = Ui.GC("鱼力全开 · 作弊菜单", "How to Fish · Cheat Menu");
 			_close = new GUIContent("✕");
-			_versionChip = new GUIContent("v" + Plugin.PluginVersion);
 			_tabs = new[]
 			{
 				Ui.GC("玩家", "Player"),
@@ -109,14 +95,13 @@ namespace HTF.CheatMenu
 			_cHunger = H(Ui.GC("永不饥饿", "No hunger"), host);
 			_cBite = Ui.GC("秒咬钩", "Instant bite");
 			_cAutoReel = Ui.GC("自动收线（钩上有鱼才收）", "Auto reel (fish hooked)");
-			_cWeight = H(Ui.GC("满重量渔获", "Max weight"), host);
+			_cWeight = H(Ui.GC("满重量渔获 ×1.75", "Max weight ×1.75"), host);
 			_cRoulette = H(Ui.GC("轮盘必胜", "Roulette always win"), host);
 			_cSlots = H(Ui.GC("老虎机必出传说", "Slots legendary"), host);
 
 			_cSpeed = BuildCycle(Plugin.SpeedOptions, "移速倍率", "Speed");
 			_cJump = BuildCycle(Plugin.JumpOptions, "跳跃倍率", "Jump");
 			_cSell = BuildCycle(Plugin.SellOptions, "卖鱼价值", "Sell worth");
-			_cSellAction = H(Ui.GC("卖鱼价值倍率", "Sell worth multiplier"), host);
 
 			_cDollar = Ui.GC("美元 $", "USD $");
 			_cEuro = Ui.GC("欧元 €", "EUR €");
@@ -145,14 +130,13 @@ namespace HTF.CheatMenu
 			_cItemEsp = Ui.GC("物品雷达", "Item radar");
 			_cPerf = Ui.GC("性能监视", "Perf overlay");
 			_cAmmoHud = Ui.GC("弹药显示", "Ammo HUD");
-			_cPerfTab = Ui.GC("性能监视", "Perf overlay");
 
 			_cDiffEasy = Ui.GC("简单", "Easy");
 			_cDiffDefault = Ui.GC("默认", "Default");
 			_cDiffHard = Ui.GC("困难", "Hard");
 			_cFF = H(Ui.GC("友方伤害", "Friendly fire"), host);
 			_cFree = H(Ui.GC("免费购物", "Free shopping"), host);
-			_cFullRestore = H(Ui.GC("满状态（血量/饱食/毒/火）", "Full restore (hp/food/poison/fire)"), host);
+			_cFullRestore = H(Ui.GC("满状态（血量/饱食/毒/火）", "Full restore"), host);
 
 			_cSkins = H(Ui.GC("解锁全部皮肤", "Unlock all skins"), host);
 			_cAchUnlock = H(Ui.GC("解锁全部成就", "Unlock achievements"), host);
@@ -172,6 +156,7 @@ namespace HTF.CheatMenu
 			_cRulesSection = Ui.GC("服务器规则", "Server rules");
 			_cProgressSection = Ui.GC("进度", "Progress");
 			_cScaleLabel = Ui.GC("界面缩放", "UI scale");
+			_cF1Hint = new GUIContent(Ui.UseZh ? "F1 收起" : "F1 hide");
 		}
 
 		private static GUIContent H(GUIContent c, string hostSuffix)
@@ -184,87 +169,148 @@ namespace HTF.CheatMenu
 			GUIContent[] arr = new GUIContent[values.Length];
 			for (int i = 0; i < values.Length; i++)
 			{
-				arr[i] = Ui.GC(zh + " x" + values[i], en + " x" + values[i]);
+				arr[i] = Ui.GC(zh + " ×" + values[i], en + " ×" + values[i]);
 			}
 			return arr;
 		}
 
 		internal static void ToggleMenu()
 		{
-			_menuOpen = !_menuOpen;
-			if (_menuOpen)
+			_dockOpen = !_dockOpen;
+			_openTab = -1;
+			if (_dockOpen)
 			{
-				_hostStatusBuilt = false;
 				EnsureSpawnList();
+			}
+		}
+
+		/// <summary>坞开启时按数字键 1-6 直达/收起对应面板。</summary>
+		internal static void HandleNumberKeys()
+		{
+			if (!_dockOpen)
+			{
+				return;
+			}
+			for (int i = 0; i < 6; i++)
+			{
+				if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i)))
+				{
+					_openTab = _openTab == i ? -1 : i;
+					_hostStatusBuilt = false;
+				}
 			}
 		}
 
 		internal static void OnGUI()
 		{
 			Ui.EnsureStyles();
-			if (_menuOpen)
+			if (!_dockOpen)
 			{
-				Ui.DrawShadow(_winRect, 16f * Ui.Scale);
-				_winRect = GUI.Window(WinId, _winRect, WindowFunc, GUIContent.none, Ui.Win);
+				return;
+			}
+			DrawDock();
+			if (_openTab >= 0)
+			{
+				_panelAnim = Mathf.MoveTowards(_panelAnim, 1f, Time.unscaledDeltaTime * 8f);
+				DrawPanel();
+			}
+			else
+			{
+				_panelAnim = 0f;
 			}
 		}
 
-		private static void DrawWindow(int id)
+		// ================= 底部糖果坞 =================
+		private static void DrawDock()
 		{
 			float s = Ui.Scale;
-			float w = _winRect.width;
+			float itemW = 72f * s, itemH = 42f * s, gap = 8f * s;
+			float dockW = 6 * itemW + 5 * gap + 20 * s;
+			float dockH = itemH + 16 * s;
+			Rect dr = new Rect((Screen.width - dockW) / 2f, Screen.height - dockH - 20f * s, dockW, dockH);
+			Ui.HardShadow(dr, 4.5f * s);
+			GUI.Box(dr, GUIContent.none, Ui.DockBg);
+			for (int i = 0; i < 6; i++)
+			{
+				Rect r = new Rect(dr.x + 10f * s + i * (itemW + gap), dr.y + 8f * s, itemW, itemH);
+				bool on = _openTab == i;
+				if (GUI.Button(r, _tabs[i], on ? Ui.DockItemOn : Ui.DockItem))
+				{
+					_openTab = on ? -1 : i;
+					_hostStatusBuilt = false;
+				}
+				if (TabHasOn(i))
+				{
+					Ui.Dot(new Rect(r.xMax - 8f * s, r.y - 4f * s, 11f * s, 11f * s), Ui.ColMint);
+				}
+			}
+		}
 
-			// ---- 标题栏（渐变 + 徽章） ----
-			Rect header = new Rect(1f, 1f, w - 2f, Ui.HeaderH * s);
-			GUI.Box(header, GUIContent.none, Ui.Header);
-			Rect titleR = new Rect(Ui.Pad * s, 0f, w - 250f * s, header.height);
-			GUI.Label(titleR, _title, Ui.Title);
+		/// <summary>该页签下是否有开关处于开启状态（坞位绿点提示）。</summary>
+		private static bool TabHasOn(int tab)
+		{
+			switch (tab)
+			{
+				case 0: return CheatCore.GodOn || CheatCore.OneShotOn || CheatCore.InfiniteAmmo || CheatCore.NoRecoil || CheatCore.RapidFire || CheatCore.HungerFreeze;
+				case 1: return _spawnDrip || _spawnDead;
+				case 2: return CheatCore.RouletteWin || CheatCore.SlotsLegendary;
+				case 3: return CheatCore.InstantBite || CheatCore.AutoReel || CheatCore.MaxWeight;
+				case 4: return Overlays.EspEnabled || Plugin.ItemEspEnabled.Value || Overlays.PerfEnabled;
+				default: return CheatCore.FreeShopping;
+			}
+		}
 
+		// ================= 浮出面板 =================
+		private static void DrawPanel()
+		{
+			float s = Ui.Scale;
+			float pw = 584f * s, ph = 508f * s;
+			float px = (Screen.width - pw) / 2f;
+			float py = Screen.height - 62f * s - ph - 34f * s + (1f - _panelAnim) * 26f * s;
+			Rect pr = new Rect(px, py, pw, ph);
+
+			Ui.HardShadow(pr, 6f * s);
+			GUI.color = new Color(1f, 1f, 1f, _panelAnim);
+			GUI.Box(pr, GUIContent.none, Ui.Panel);
+
+			// 标签牌（骑上沿，按页配色）
+			float tagW = 132f * s, tagH = 34f * s;
+			Rect tagR = new Rect(pr.center.x - tagW / 2f, pr.y - tagH * 0.45f, tagW, tagH);
+			Ui.HardShadow(tagR, 3f * s);
+			GUI.DrawTexture(tagR, Ui.TagTex(_openTab));
+			GUI.Label(tagR, _tabs[_openTab], Ui.Tag);
+
+			// 左上：F1 提示徽章
+			Rect f1R = new Rect(pr.x + 12f * s, pr.y + 10f * s, 64f * s, 22f * s);
+			GUI.Box(f1R, GUIContent.none, Ui.Chip);
+			GUI.Label(f1R, _cF1Hint, Ui.Chip);
+			// 右上：主机徽章
 			if (!_hostStatusBuilt)
 			{
 				_hostNow = CheatCore.IsServer;
-				_hostText = Ui.UseZh ? (_hostNow ? "主机" : "客户端") : (_hostNow ? "HOST" : "CLIENT");
+				_hostText = Ui.UseZh ? (_hostNow ? "★ 主机" : "客户端") : (_hostNow ? "★ HOST" : "CLIENT");
 				_hostStatusBuilt = true;
 			}
-			// 主机徽章（圆点 + 文本）
-			float chipH = 20f * s;
-			Rect hostR = new Rect(w - 36f * s - 58f * s, (header.height - chipH) * 0.5f, 58f * s, chipH);
+			Rect hostR = new Rect(pr.xMax - 12f * s - 78f * s, pr.y + 10f * s, 78f * s, 22f * s);
 			GUI.Box(hostR, GUIContent.none, Ui.Chip);
-			Ui.Dot(new Rect(hostR.x + 7f * s, hostR.y + (hostR.height - 6f * s) * 0.5f, 6f * s, 6f * s),
-				_hostNow ? Ui.ColOn : Ui.ColOff);
-			GUI.Label(new Rect(hostR.x + 16f * s, hostR.y, hostR.width - 18f * s, hostR.height), _hostText, Ui.Small);
-			// 版本徽章
-			Rect verR = new Rect(hostR.x - 8f * s - 56f * s, hostR.y, 56f * s, chipH);
-			GUI.Label(verR, _versionChip, Ui.Chip);
-			// 关闭按钮
-			Rect closeR = new Rect(w - 32f * s, (header.height - 24f * s) * 0.5f, 24f * s, 24f * s);
+			Ui.Dot(new Rect(hostR.x + 7f * s, hostR.y + (hostR.height - 6f * s) * 0.5f, 6f * s, 6f * s), _hostNow ? Ui.ColMint : Ui.ColOff);
+			GUI.Label(new Rect(hostR.x + 16f * s, hostR.y, hostR.width - 18f * s, hostR.height), _hostText, Ui.Chip);
+			// 关闭按钮（标签牌右侧）
+			Rect closeR = new Rect(tagR.xMax + 10f * s, pr.y - 12f * s, 26f * s, 26f * s);
+			Ui.HardShadow(closeR, 2f * s);
 			if (GUI.Button(closeR, _close, Ui.Tab))
 			{
-				ToggleMenu();
+				_openTab = -1;
+				GUI.color = Color.white;
 				return;
 			}
 
-			// ---- 页签 ----
-			Rect tabsR = new Rect(Ui.Pad * s, header.height + 8f * s, w - Ui.Pad * 2f * s, Ui.TabH * s);
-			float tabW = (tabsR.width - 5f * Ui.RowGap * s) / 6f;
-			for (int i = 0; i < 6; i++)
-			{
-				Rect r = new Rect(tabsR.x + i * (tabW + Ui.RowGap * s), tabsR.y, tabW, tabsR.height);
-				if (GUI.Button(r, _tabs[i], i == _tab ? Ui.TabActive : Ui.Tab))
-				{
-					_tab = i;
-				}
-			}
-
-			// ---- 内容（外层滚动；内容高度用上一帧收敛值，一帧内稳定） ----
-			float top = tabsR.y + tabsR.height + 8f * s;
-			float viewH = _winRect.height - top - 36f * s;
-			Rect viewR = new Rect(Ui.Pad * s, top, w - Ui.Pad * 2f * s, viewH);
-			float contentH = Mathf.Max(_pageHeights[_tab], viewH);
-			// scrollView 样式的悬停/聚焦背景已在 Ui.EnsureStyles 清空（游戏皮肤污染源）
-			Vector2 scroll = GUI.BeginScrollView(viewR, _scrolls[_tab], new Rect(0f, 0f, viewR.width - 14f, contentH));
-			Ui.BeginArea(0f, 4f * s, viewR.width - 14f);
-			switch (_tab)
+			// 内容滚动
+			Rect view = new Rect(pr.x + Ui.Pad * s, pr.y + 40f * s, pr.width - Ui.Pad * 2f * s, pr.height - 52f * s);
+			float contentH = Mathf.Max(_pageHeights[_openTab], view.height);
+			Vector2 scroll = GUI.BeginScrollView(view, _scrolls[_openTab], new Rect(0f, 0f, view.width - 14f, contentH));
+			Ui.BeginArea(0f, 4f * s, view.width - 14f);
+			switch (_openTab)
 			{
 				case 0: DrawPlayer(); break;
 				case 1: DrawWorld(); break;
@@ -273,20 +319,10 @@ namespace HTF.CheatMenu
 				case 4: DrawDisplay(); break;
 				default: DrawMisc(); break;
 			}
-			_pageHeights[_tab] = Ui.CursorY + Ui.Pad * s;
+			_pageHeights[_openTab] = Ui.CursorY + Ui.Pad * s;
 			GUI.EndScrollView();
-			_scrolls[_tab] = scroll;
-
-			// ---- 底栏（上缘细分隔线） ----
-			float footY = _winRect.height - 30f * s;
-			Color old = GUI.color;
-			GUI.color = new Color(1f, 1f, 1f, 0.07f);
-			GUI.DrawTexture(new Rect(6f * s, footY - 3f * s, w - 12f * s, 1f), Texture2D.whiteTexture);
-			GUI.color = old;
-			Rect footer = new Rect(Ui.Pad * s, footY, w - Ui.Pad * 2f * s, 22f * s);
-			GUI.Label(footer, Plugin.FooterText, Ui.Footer);
-
-			GUI.DragWindow(new Rect(0f, 0f, w, header.height));
+			_scrolls[_openTab] = scroll;
+			GUI.color = Color.white;
 		}
 
 		// ================= 玩家 =================
@@ -346,7 +382,6 @@ namespace HTF.CheatMenu
 			Ui.Gap();
 			Ui.SectionRow(_cMoneySection);
 			Ui.Next();
-
 			Rect r1 = Ui.Slice(0f, 0.49f);
 			Rect r2 = Ui.Slice(0.51f, 0.49f);
 			if (GUI.Button(r1, _cDollar, CheatCore.MoneyCurrency == Currency.Dollar ? Ui.TabActive : Ui.Tab))
@@ -358,7 +393,6 @@ namespace HTF.CheatMenu
 				CheatCore.MoneyCurrency = Currency.Euro;
 			}
 			Ui.Next();
-
 			Rect fieldR = Ui.Slice(0f, 0.60f);
 			string edited = GUI.TextField(fieldR, _moneyInput, Ui.Field);
 			if (!ReferenceEquals(edited, _moneyInput))
@@ -371,7 +405,6 @@ namespace HTF.CheatMenu
 				CheatCore.AddMoney(amt);
 			}
 			Ui.Next();
-
 			if (Ui.Ghost(_cSetMoney, host) && host && int.TryParse(_moneyInput, out int set))
 			{
 				CheatCore.SetMoney(set);
@@ -405,7 +438,6 @@ namespace HTF.CheatMenu
 			}
 			Ui.Next();
 
-			// 指定岛：[-] 岛N [+] [传送]；列表为空（如在大厅打开过菜单）则持续尝试重建
 			if (_mainIslands == null || _mainIslands.Length == 0)
 			{
 				BuildMainIslands();
@@ -418,11 +450,11 @@ namespace HTF.CheatMenu
 			Rect labelR = Ui.Slice(0.14f, 0.32f);
 			Rect plusR = Ui.Slice(0.48f, 0.12f);
 			Rect goR = Ui.Slice(0.62f, 0.38f);
-			if (GUI.Button(minusR, _cIslandMinus, Ui.BtnGhost) && _mainIslands != null && _mainIslands.Length > 0)
+			if (GUI.Button(minusR, _cIslandMinus, Ui.Tab) && _mainIslands != null && _mainIslands.Length > 0)
 			{
 				_islandSel = (_islandSel + _mainIslands.Length - 1) % _mainIslands.Length;
 			}
-			if (GUI.Button(plusR, _cIslandPlus, Ui.BtnGhost) && _mainIslands != null && _mainIslands.Length > 0)
+			if (GUI.Button(plusR, _cIslandPlus, Ui.Tab) && _mainIslands != null && _mainIslands.Length > 0)
 			{
 				_islandSel = (_islandSel + 1) % _mainIslands.Length;
 			}
@@ -478,7 +510,6 @@ namespace HTF.CheatMenu
 			Ui.Gap();
 			Ui.SectionRow(_cSpawnHeader);
 			Ui.Next();
-
 			string edited = GUI.TextField(Ui.Slice(0f, 0.58f), _search, Ui.Field);
 			if (!ReferenceEquals(edited, _search))
 			{
@@ -498,8 +529,6 @@ namespace HTF.CheatMenu
 			Ui.Next();
 			Ui.LabelRow(_cSearchHint, Ui.Small);
 			Ui.Next();
-
-			// 列表（由外层滚动承载）
 			Ui.Row(24f * s);
 			int count = _viewLabels.Length;
 			for (int i = 0; i < count; i++)
@@ -621,7 +650,7 @@ namespace HTF.CheatMenu
 				Plugin.AmmoHudEnabled.Value = !Plugin.AmmoHudEnabled.Value;
 			}
 			Ui.Next();
-			if (Ui.ToggleRow(_cPerfTab, Overlays.PerfEnabled))
+			if (Ui.ToggleRow(_cPerf, Overlays.PerfEnabled))
 			{
 				Overlays.TogglePerf();
 			}
@@ -633,11 +662,10 @@ namespace HTF.CheatMenu
 			Ui.Row(22f);
 			Rect sliderR = Ui.Slice(0.02f, 0.66f);
 			float v = GUI.HorizontalSlider(sliderR, Ui.Scale, 0.75f, 1.5f);
-			// 数值文本缓存：仅在跨过 0.01 档位时重建字符串
 			if (Mathf.Abs(Ui.Scale - _scaleTextValue) > 0.005f)
 			{
 				_scaleTextValue = Ui.Scale;
-				_scaleText = Ui.Scale.ToString("F2") + "x";
+				_scaleText = Ui.Scale.ToString("F2") + "×";
 			}
 			GUI.Label(Ui.Slice(0.72f, 0.26f), _scaleText, Ui.Value);
 			if (Mathf.Abs(v - Ui.Scale) > 0.0005f)
@@ -650,7 +678,7 @@ namespace HTF.CheatMenu
 		}
 
 		private static float _scaleTextValue = -1f;
-		private static string _scaleText = "1.00x";
+		private static string _scaleText = "1.00×";
 
 		// ================= 杂项 =================
 		private static void DrawMisc()
@@ -660,7 +688,6 @@ namespace HTF.CheatMenu
 
 			Ui.SectionRow(_cRulesSection);
 			Ui.Next();
-
 			Rect d1 = Ui.Slice(0f, 0.32f);
 			Rect d2 = Ui.Slice(0.34f, 0.32f);
 			Rect d3 = Ui.Slice(0.68f, 0.32f);
@@ -678,7 +705,6 @@ namespace HTF.CheatMenu
 				CheatCore.SetDifficulty(2);
 			}
 			Ui.Next();
-
 			bool ff = ServerSettings.Instance && ServerSettings.UseFriendlyFire;
 			if (Ui.ToggleRow(_cFF, ff, host))
 			{
@@ -766,7 +792,6 @@ namespace HTF.CheatMenu
 				names[i] = LocalizedName(it);
 			}
 
-			// 重名条目追加 prefab 名区分（如两个"天使鱼"变体）
 			Dictionary<string, int> nameCounts = new Dictionary<string, int>(names.Length);
 			for (int i = 0; i < names.Length; i++)
 			{
@@ -804,7 +829,6 @@ namespace HTF.CheatMenu
 			_allLabels = new GUIContent[items.Length];
 			for (int i = 0; i < items.Length; i++)
 			{
-				// 生物加青色菱形前缀（Btn.richText=true 承担富文本）
 				string prefix = creatures[i] ? "<color=#" + Ui.HostTagHex + ">◆ </color>" : "";
 				_allLabels[i] = new GUIContent(prefix + names[i]);
 			}
@@ -820,7 +844,6 @@ namespace HTF.CheatMenu
 				_viewLabels = _allLabels;
 				return;
 			}
-			// 打字期分配可接受：仅在搜索串变化时重建
 			List<Item> items = new List<Item>(_allItems.Length);
 			List<GUIContent> labels = new List<GUIContent>(_allItems.Length);
 			for (int i = 0; i < _allItems.Length; i++)
@@ -835,7 +858,6 @@ namespace HTF.CheatMenu
 			_viewLabels = labels.ToArray();
 		}
 
-		/// <summary>取物品本地化名（游戏内悬停/商店同一来源）；本地化未就绪时回退 prefab 名。</summary>
 		private static string LocalizedName(Item it)
 		{
 			try

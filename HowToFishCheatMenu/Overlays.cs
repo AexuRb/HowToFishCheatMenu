@@ -112,11 +112,11 @@ namespace HTF.CheatMenu
 			}
 		}
 
-		internal static GUIStyle MenuLabelStyle => Ui.Label;
+		internal static GUIStyle MenuLabelStyle => Ui.OverlayLabel;
 
-		internal static GUIStyle HudStyle => Ui.Value;
+		internal static GUIStyle HudStyle => Ui.OverlayValue;
 
-		internal static GUIStyle BoxStyle => Ui.Box;
+		internal static GUIStyle BoxStyle => Ui.OverlayBox;
 
 		/// <summary>手持远程武器时右下角显示 弹药/弹匣。文本只在数值变化时重建。</summary>
 		private static void DrawAmmoHud()

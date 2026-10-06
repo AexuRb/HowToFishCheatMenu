@@ -17,7 +17,7 @@ namespace HTF.CheatMenu
 	{
 		public const string PluginGuid = "com.htf.cheatmenu";
 		public const string PluginName = "HowToFishCheatMenu";
-		public const string PluginVersion = "2.2.0";
+		public const string PluginVersion = "2.3.0";
 
 		internal static ManualLogSource Log;
 
@@ -159,7 +159,7 @@ namespace HTF.CheatMenu
 
 		private void SuppressGameUiInput()
 		{
-			bool shouldDisable = MenuUI.MenuOpen && !ChatManager.IsTyping;
+			bool shouldDisable = MenuUI.PanelOpen && !ChatManager.IsTyping;
 			if (shouldDisable)
 			{
 				if (Time.unscaledTime >= _esNextScan)
@@ -215,7 +215,7 @@ namespace HTF.CheatMenu
 			{
 				return;
 			}
-			if (MenuUI.MenuOpen)
+			if (MenuUI.PanelOpen)
 			{
 				if (_disabledActions.Count == 0)
 				{
@@ -292,18 +292,19 @@ namespace HTF.CheatMenu
 			SuppressGameUiInput();
 			SuppressGameplayInput();
 
-			// 关闭菜单瞬间清掉武器卡住的按住/连发队列状态，防止一关菜单就开始走火
-			if (_wasMenuOpen && !MenuUI.MenuOpen)
+			// 关闭面板瞬间清掉武器卡住的按住/连发队列状态，防止一关面板就开始走火
+			if (_wasMenuOpen && !MenuUI.PanelOpen)
 			{
 				ClearStuckFireInput();
 			}
-			_wasMenuOpen = MenuUI.MenuOpen;
+			_wasMenuOpen = MenuUI.PanelOpen;
 
 			// 热路径：只做 KeyCode 比较，不产生任何分配
 			if (_menuKey.Value != KeyCode.None && Input.GetKeyDown(_menuKey.Value))
 			{
 				MenuUI.ToggleMenu();
 			}
+			MenuUI.HandleNumberKeys();
 
 			if (_godKey.Value != KeyCode.None && Input.GetKeyDown(_godKey.Value))
 			{

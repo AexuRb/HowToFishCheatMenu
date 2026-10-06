@@ -4,80 +4,110 @@ using UnityEngine;
 namespace HTF.CheatMenu
 {
 	/// <summary>
-	/// UI 3.0 主题与控件层。规避 GC 的关键点：
-	/// - 圆角纹理 / GUIStyle / GUIContent 全部初始化一次并复用
-	/// - 布局用静态游标推进（Rect 是 struct，就地复用，不分配）
-	/// - 所有样式从零构建，绝不继承 GUI.skin（游戏自定义皮肤的状态会泄漏）
+	/// UI 4.0 "Candy Dock" 主题（E 坞式呼出 × H 糖果街机）：
+	/// 底部糖果坞 + 浮出面板；厚墨水描边 + 硬阴影 + 奶油底色。
+	/// 规避 GC：纹理/样式/GUIContent 一次构建复用；布局用静态游标推进。
+	/// 所有样式从零构建，绝不继承 GUI.skin（游戏自定义皮肤状态会泄漏）。
 	/// </summary>
 	internal static class Ui
 	{
-		// ---- 设计令牌 ----
-		// 窗口与面板必须全不透明：半透明底会和游戏暂停菜单遮罩叠出脏色
-		internal static readonly Color ColWinBg = new Color(0.052f, 0.066f, 0.098f, 1f);
-		internal static readonly Color ColPanel = new Color(0.10f, 0.128f, 0.175f, 1f);
-		internal static readonly Color ColRowHover = new Color(0.155f, 0.205f, 0.28f, 1f);
-		internal static readonly Color ColAccent = new Color(0.22f, 0.78f, 0.86f);
-		internal static readonly Color ColAccentDeep = new Color(0.10f, 0.42f, 0.50f);
-		internal static readonly Color ColOn = new Color(0.28f, 0.82f, 0.54f);
-		internal static readonly Color ColOff = new Color(0.34f, 0.39f, 0.47f);
-		internal static readonly Color ColDanger = new Color(0.93f, 0.42f, 0.35f);
-		internal static readonly Color ColGold = new Color(1f, 0.79f, 0.28f);
-		internal static readonly Color ColText = new Color(0.93f, 0.96f, 0.98f);
-		internal static readonly Color ColDim = new Color(0.585f, 0.665f, 0.745f);
-		internal const string HostTagHex = "6fd0e0";
+		// ---- 糖果设计令牌 ----
+		internal static readonly Color ColCream = new Color(1f, 0.98f, 0.94f, 1f);
+		internal static readonly Color ColCreamDim = new Color(0.965f, 0.935f, 0.87f, 1f);
+		internal static readonly Color ColInk = new Color(0.23f, 0.17f, 0.125f, 1f);
+		internal static readonly Color ColInkSoft = new Color(0.23f, 0.17f, 0.125f, 0.55f);
+		internal static readonly Color ColMuted = new Color(0.54f, 0.47f, 0.40f, 1f);
+		internal static readonly Color ColCoral = new Color(1f, 0.48f, 0.35f, 1f);
+		internal static readonly Color ColMint = new Color(0.24f, 0.81f, 0.65f, 1f);
+		internal static readonly Color ColBanana = new Color(1f, 0.79f, 0.24f, 1f);
+		internal static readonly Color ColSky = new Color(0.36f, 0.72f, 1f, 1f);
+		internal static readonly Color ColLilac = new Color(0.725f, 0.545f, 1f, 1f);
+		internal static readonly Color ColWhite = new Color(1f, 1f, 1f, 1f);
+
+		// 游戏内 overlay（深色游戏画面上的浅色文字）用
+		internal static readonly Color ColOverlayText = new Color(0.93f, 0.96f, 0.98f, 1f);
+		internal static readonly Color ColOverlayGold = new Color(1f, 0.79f, 0.28f, 1f);
+		internal const string HostTagHex = "a257e6";
+
+		// 旧引用兼容
+		internal static Color ColOn => ColMint;
+		internal static Color ColOff => new Color(0.55f, 0.60f, 0.55f, 1f);
+		internal static Color ColGold => ColCoral;
+		internal static Color ColText => ColInk;
+		internal static Color ColDim => ColMuted;
 
 		// ---- 布局常量（乘以缩放） ----
 		internal const float RowH = 32f;
 		internal const float RowGap = 6f;
-		internal const float Pad = 12f;
-		internal const float HeaderH = 40f;
-		internal const float TabH = 30f;
+		internal const float Pad = 14f;
+		internal const float TabH = 32f;
 
 		internal static float Scale = 1f;
 
 		// ---- 样式 ----
 		private static bool _ready;
-		internal static GUIStyle Win;
-		internal static GUIStyle Header;
+		internal static GUIStyle Panel;        // 奶油卡片
+		internal static GUIStyle DockBg;       // 坞底
+		internal static GUIStyle DockItem;     // 坞按钮（白）
+		internal static GUIStyle DockItemOn;   // 坞按钮（珊瑚）
+		internal static GUIStyle Tag;          // 标签牌（纹理按页配色）
 		internal static GUIStyle Title;
-		internal static GUIStyle Chip;
-		internal static GUIStyle Tab;
-		internal static GUIStyle TabActive;
-		internal static GUIStyle Btn;
-		internal static GUIStyle BtnPrimary;
-		internal static GUIStyle BtnGhost;
-		internal static GUIStyle BtnOn;
-		internal static GUIStyle BtnOff;
-		internal static GUIStyle BtnDanger;
+		internal static GUIStyle Chip;         // 主机徽章
+		internal static GUIStyle Tab;          // 分段控件（白胶囊）
+		internal static GUIStyle TabActive;    // 分段控件（珊瑚胶囊）
+		internal static GUIStyle Btn;          // 行按钮（白，左对齐）
+		internal static GUIStyle BtnPrimary;   // 珊瑚主按钮（居中）
+		internal static GUIStyle BtnGhost;     // 白幽灵按钮（居中）
+		internal static GUIStyle BtnDanger;    // 珊瑚危险按钮
 		internal static GUIStyle BtnDisabled;
-		internal static GUIStyle Label;
-		internal static GUIStyle Small;
+		internal static GUIStyle Label;        // 墨色粗体行标签
+		internal static GUIStyle Small;        // 弱化说明
 		internal static GUIStyle Dim;
-		internal static GUIStyle Section;
-		internal static GUIStyle Value;   // 右对齐数值
-		internal static GUIStyle Field;   // 输入框
+		internal static GUIStyle Section;      // 分节（墨色 + 珊瑚下划线）
+		internal static GUIStyle Value;        // 数值（珊瑚）
+		internal static GUIStyle Field;        // 输入框（白 + 墨描边）
 		internal static GUIStyle Footer;
 		internal static GUIStyle Box;
+		// 游戏内 overlay 专用（浅色文字）
+		internal static GUIStyle OverlayLabel;
+		internal static GUIStyle OverlaySmall;
+		internal static GUIStyle OverlayValue;
+		internal static GUIStyle OverlayBox;
 
 		internal static Font UiFont;
 		internal static bool UseZh;
 
-		private static Texture2D _texWin;
-		private static Texture2D _texPanel;
-		private static Texture2D _texRowHover;
-		private static Texture2D _texAccent;
-		private static Texture2D _texOn;
-		private static Texture2D _texOff;
-		private static Texture2D _texDanger;
-		private static Texture2D _texField;
-		private static Texture2D _texWhite;
-		private static Texture2D _texGhost;
-		private static Texture2D _texHeaderGrad;
-		private static Texture2D _texPillOn;
-		private static Texture2D _texPillOff;
-		private static Texture2D _texKnob;
-		private static Texture2D _texShadow;
+		private static Texture2D _texCard;
+		private static Texture2D _texDock;
+		private static Texture2D _texDockItem;
+		private static Texture2D _texDockItemOn;
+		private static Texture2D[] _texTags;
 		private static Texture2D _texChip;
+		private static Texture2D _texPillWhite;
+		private static Texture2D _texPillCoral;
+		private static Texture2D _texBtnWhite;
+		private static Texture2D _texBtnCoral;
+		private static Texture2D _texBtnMint;
+		private static Texture2D _texBtnSky;
+		private static Texture2D _texBtnDisabled;
+		private static Texture2D _texSwitchOn;
+		private static Texture2D _texSwitchOff;
+		private static Texture2D _texKnob;
+		private static Texture2D _texField;
+		private static Texture2D _texRowHover;
+		private static Texture2D _texShadowInk;
+		private static Texture2D _texWhite;
+		private static Texture2D _texSolid;
+
+		private static readonly Color[] TagColors =
+		{
+			new Color(1f, 0.79f, 0.24f),    // 玩家 banana
+			new Color(0.36f, 0.72f, 1f),    // 世界 sky
+			new Color(0.725f, 0.545f, 1f),  // 赌场 lilac
+			new Color(0.24f, 0.81f, 0.65f), // 钓鱼 mint
+			new Color(1f, 0.48f, 0.35f),    // 显示 coral
+			new Color(1f, 0.93f, 0.78f),    // 杂项 cream
+		};
 
 		internal static bool Ready => _ready;
 
@@ -91,7 +121,7 @@ namespace HTF.CheatMenu
 			}
 		}
 
-		/// <summary>缩放滑条等场景下强制下一帧重建纹理与样式（旧纹理随之销毁，避免泄漏）。</summary>
+		/// <summary>缩放变化后强制下一帧重建纹理与样式。</summary>
 		internal static void InvalidateStyles()
 		{
 			if (!_ready)
@@ -99,29 +129,28 @@ namespace HTF.CheatMenu
 				return;
 			}
 			_ready = false;
-			Texture2D[] tex = { _texWin, _texPanel, _texRowHover, _texAccent, _texOn, _texOff, _texDanger, _texField, _texGhost, _texHeaderGrad, _texPillOn, _texPillOff, _texKnob, _texShadow, _texChip };
+			Texture2D[] tex = { _texCard, _texDock, _texDockItem, _texDockItemOn, _texChip, _texPillWhite, _texPillCoral, _texBtnWhite, _texBtnCoral, _texBtnMint, _texBtnSky, _texBtnDisabled, _texSwitchOn, _texSwitchOff, _texKnob, _texField, _texRowHover, _texShadowInk };
 			for (int i = 0; i < tex.Length; i++)
 			{
-				if (tex[i] != null && tex[i] != Texture2D.whiteTexture)
+				if (tex[i] != null)
 				{
 					UnityEngine.Object.Destroy(tex[i]);
 				}
 			}
-			_texWin = null;
-			_texPanel = null;
-			_texRowHover = null;
-			_texAccent = null;
-			_texOn = null;
-			_texOff = null;
-			_texDanger = null;
-			_texField = null;
-			_texGhost = null;
-			_texHeaderGrad = null;
-			_texPillOn = null;
-			_texPillOff = null;
-			_texKnob = null;
-			_texShadow = null;
-			_texChip = null;
+			if (_texTags != null)
+			{
+				for (int i = 0; i < _texTags.Length; i++)
+				{
+					if (_texTags[i] != null)
+					{
+						UnityEngine.Object.Destroy(_texTags[i]);
+					}
+				}
+			}
+			_texCard = null; _texDock = null; _texDockItem = null; _texDockItemOn = null; _texTags = null;
+			_texChip = null; _texPillWhite = null; _texPillCoral = null; _texBtnWhite = null; _texBtnCoral = null;
+			_texBtnMint = null; _texBtnSky = null; _texBtnDisabled = null; _texSwitchOn = null; _texSwitchOff = null;
+			_texKnob = null; _texField = null; _texRowHover = null; _texShadowInk = null;
 		}
 
 		internal static void EnsureStyles()
@@ -134,7 +163,7 @@ namespace HTF.CheatMenu
 
 			// 根因修复：游戏自定义皮肤的 scrollView 样式带白色 hover/focused 背景，
 			// BeginScrollView 所有公开重载都强制用 skin.scrollView 当背景，
-			// 鼠标悬停/点击滚动区就会盖出白色光斑。游戏自身完全没有 IMGUI，清空零副作用。
+			// 悬停/点击滚动区就会盖出异色光斑。游戏自身完全没有 IMGUI，清空零副作用。
 			GUIStyle sv = GUI.skin.scrollView;
 			sv.normal.background = null;
 			sv.hover.background = null;
@@ -145,94 +174,139 @@ namespace HTF.CheatMenu
 			sv.onActive.background = null;
 			sv.onFocused.background = null;
 
-			int rad = (int)(10f * Scale);
-			Color outline = new Color(ColAccent.r, ColAccent.g, ColAccent.b, 0.35f);
-			_texWin = RoundedShape(ColWinBg, rad, outline, 1, false, 0f);
-			_texPanel = RoundedShape(ColPanel, Mathf.Min(8, rad), new Color(1f, 1f, 1f, 0.05f), 1, false, 0f);
-			_texRowHover = RoundedShape(ColRowHover, Mathf.Min(6, rad), null, 0, false, 0f);
-			_texAccent = RoundedShape(new Color(ColAccent.r, ColAccent.g, ColAccent.b, 0.95f), Mathf.Min(8, rad), null, 0, false, 0f);
-			_texOn = RoundedShape(new Color(ColOn.r, ColOn.g, ColOn.b, 0.22f), Mathf.Min(8, rad), new Color(ColOn.r, ColOn.g, ColOn.b, 0.75f), 1, false, 0f);
-			_texOff = RoundedShape(new Color(1f, 1f, 1f, 0.05f), Mathf.Min(8, rad), new Color(1f, 1f, 1f, 0.09f), 1, false, 0f);
-			_texDanger = RoundedShape(new Color(ColDanger.r, ColDanger.g, ColDanger.b, 0.28f), Mathf.Min(8, rad), new Color(ColDanger.r, ColDanger.g, ColDanger.b, 0.7f), 1, false, 0f);
-			_texField = RoundedShape(new Color(0f, 0f, 0f, 0.4f), Mathf.Min(6, rad), new Color(ColAccent.r, ColAccent.g, ColAccent.b, 0.3f), 1, false, 0f);
-			_texGhost = RoundedShape(new Color(1f, 1f, 1f, 0.03f), Mathf.Min(8, rad), new Color(ColAccent.r, ColAccent.g, ColAccent.b, 0.55f), 1, false, 0f);
-			_texHeaderGrad = GradientHeader(rad);
-			_texPillOn = RoundedShape(ColOn, 32, null, 0, false, 0f);
-			_texPillOff = RoundedShape(ColOff, 32, null, 0, false, 0f);
-			_texKnob = RoundedShape(new Color(0.96f, 0.98f, 1f), 32, null, 0, false, 0f);
-			_texShadow = RoundedShape(new Color(0f, 0f, 0f, 0.62f), 24, null, 0, false, 16f * Scale);
-			_texChip = RoundedShape(new Color(ColAccentDeep.r, ColAccentDeep.g, ColAccentDeep.b, 0.85f), 32, null, 0, false, 0f);
+			int rad = (int)(18f * Scale);
+			int bRad = (int)(14f * Scale);
+			int pillRad = (int)(22f * Scale);
+			int dockRad = (int)(22f * Scale);
+			_texCard = RoundedShape(ColCream, rad, ColInk, 3, false, 0f);
+			_texDock = RoundedShape(ColCream, dockRad, ColInk, 3, false, 0f);
+			_texDockItem = RoundedShape(ColWhite, bRad, ColInk, 3, false, 0f);
+			_texDockItemOn = RoundedShape(ColCoral, bRad, ColInk, 3, false, 0f);
+			_texTags = new Texture2D[TagColors.Length];
+			for (int i = 0; i < TagColors.Length; i++)
+			{
+				_texTags[i] = RoundedShape(TagColors[i], 32, ColInk, 3, false, 0f);
+			}
+			_texChip = RoundedShape(ColCreamDim, 32, ColInk, 3, false, 0f);
+			_texPillWhite = RoundedShape(ColWhite, 32, ColInk, 3, false, 0f);
+			_texPillCoral = RoundedShape(ColCoral, 32, ColInk, 3, false, 0f);
+			_texBtnWhite = RoundedShape(ColWhite, bRad, ColInk, 3, false, 0f);
+			_texBtnCoral = RoundedShape(ColCoral, bRad, ColInk, 3, false, 0f);
+			_texBtnMint = RoundedShape(ColMint, bRad, ColInk, 3, false, 0f);
+			_texBtnSky = RoundedShape(ColSky, bRad, ColInk, 3, false, 0f);
+			_texBtnDisabled = RoundedShape(new Color(0.93f, 0.90f, 0.84f, 1f), bRad, new Color(0.23f, 0.17f, 0.125f, 0.35f), 3, false, 0f);
+			_texSwitchOn = RoundedShape(ColMint, 32, ColInk, 3, false, 0f);
+			_texSwitchOff = RoundedShape(new Color(0.91f, 0.87f, 0.79f, 1f), 32, ColInk, 3, false, 0f);
+			_texKnob = RoundedShape(ColWhite, 32, ColInk, 3, false, 0f);
+			_texField = RoundedShape(ColWhite, (int)(12f * Scale), ColInk, 3, false, 0f);
+			_texRowHover = RoundedShape(new Color(1f, 0.79f, 0.24f, 0.16f), (int)(10f * Scale), null, 0, false, 0f);
+			_texShadowInk = RoundedShape(ColInk, rad, null, 0, false, 0f);
 			_texWhite = Texture2D.whiteTexture;
 
-			Win = Base(_texWin, 13, ColText, TextAnchor.UpperLeft, rad);
-			// 九宫格拉伸：边框切片保持像素宽，烘焙的 1px 描边不会被拉伸成粗带
-			Win.border = new RectOffset(rad, rad, rad, rad);
-			Win.overflow = new RectOffset(0, 0, 0, 0);
-			Win.padding = new RectOffset(0, 0, 0, 0);
+			Panel = Base(_texCard, 13, ColInk, TextAnchor.UpperLeft, rad);
+			Panel.border = new RectOffset(rad, rad, rad, rad);
+			Panel.overflow = new RectOffset(0, 0, 0, 0);
+			Panel.padding = new RectOffset((int)(18f * Scale), (int)(18f * Scale), (int)(28f * Scale), (int)(14f * Scale));
 
-			Header = Base(_texHeaderGrad, 13, ColText, TextAnchor.MiddleLeft, Mathf.Min(10, rad));
-			Header.border = new RectOffset(Mathf.Min(10, rad), Mathf.Min(10, rad), Mathf.Min(10, rad), 0);
-			Header.overflow = new RectOffset(0, 0, 0, 0);
+			DockBg = Base(_texDock, 13, ColInk, TextAnchor.MiddleCenter, dockRad);
+			DockBg.border = new RectOffset(dockRad, dockRad, dockRad, dockRad);
+			DockBg.overflow = new RectOffset(0, 0, 0, 0);
+			DockBg.padding = new RectOffset((int)(10f * Scale), (int)(10f * Scale), (int)(7f * Scale), (int)(7f * Scale));
+			DockItem = Base(_texDockItem, (int)(13f * Scale), ColInk, TextAnchor.MiddleCenter, bRad);
+			DockItem.fontStyle = FontStyle.Bold;
+			DockItemOn = Base(_texDockItemOn, (int)(13f * Scale), ColWhite, TextAnchor.MiddleCenter, bRad);
+			DockItemOn.fontStyle = FontStyle.Bold;
 
-			Title = Base(null, (int)(15f * Scale), ColText, TextAnchor.MiddleLeft);
+			Title = Base(null, (int)(16f * Scale), ColInk, TextAnchor.MiddleLeft);
 			Title.fontStyle = FontStyle.Bold;
 
-			Chip = Base(_texChip, (int)(10f * Scale), new Color(0.75f, 0.93f, 0.97f), TextAnchor.MiddleCenter);
-			Chip.padding.left = 8;
-			Chip.padding.right = 8;
+			Tag = Base(null, (int)(14f * Scale), ColInk, TextAnchor.MiddleCenter);
+			Tag.fontStyle = FontStyle.Bold;
 
-			Tab = Base(null, (int)(13f * Scale), ColDim, TextAnchor.MiddleCenter);
-			TabActive = Base(_texAccent, (int)(13f * Scale), new Color(0.02f, 0.09f, 0.11f), TextAnchor.MiddleCenter);
+			Chip = Base(_texChip, (int)(11f * Scale), ColInk, TextAnchor.MiddleCenter);
+			Chip.fontStyle = FontStyle.Bold;
+
+			Tab = Base(_texPillWhite, (int)(13f * Scale), ColInk, TextAnchor.MiddleCenter, pillRad);
+			TabActive = Base(_texPillCoral, (int)(13f * Scale), ColWhite, TextAnchor.MiddleCenter, pillRad);
 			TabActive.fontStyle = FontStyle.Bold;
 
-			Btn = Base(_texOff, (int)(13f * Scale), ColText, TextAnchor.MiddleLeft);
-			Btn.padding.left = (int)(10f * Scale);
+			Btn = Base(_texBtnWhite, (int)(13f * Scale), ColInk, TextAnchor.MiddleLeft, bRad);
+			Btn.padding.left = (int)(12f * Scale);
 			Btn.richText = true;
+			Btn.fontStyle = FontStyle.Bold;
 			Btn.hover.background = _texRowHover;
 
-			BtnOn = Base(_texOn, (int)(13f * Scale), ColOn, TextAnchor.MiddleLeft);
-			BtnOn.padding.left = (int)(10f * Scale);
-			BtnOn.richText = true;
-			BtnOn.fontStyle = FontStyle.Bold;
-
-			BtnOff = Btn;
-
-			BtnPrimary = Base(_texAccent, (int)(13f * Scale), new Color(0.02f, 0.09f, 0.11f), TextAnchor.MiddleCenter);
+			BtnPrimary = Base(_texBtnCoral, (int)(13f * Scale), ColWhite, TextAnchor.MiddleCenter, bRad);
 			BtnPrimary.fontStyle = FontStyle.Bold;
 
-			BtnGhost = Base(_texGhost, (int)(13f * Scale), ColText, TextAnchor.MiddleCenter);
+			BtnGhost = Base(_texBtnWhite, (int)(13f * Scale), ColInk, TextAnchor.MiddleCenter, bRad);
+			BtnGhost.fontStyle = FontStyle.Bold;
 
-			BtnDanger = Base(_texDanger, (int)(13f * Scale), new Color(1f, 0.84f, 0.82f), TextAnchor.MiddleCenter);
+			BtnDanger = Base(_texBtnCoral, (int)(13f * Scale), ColWhite, TextAnchor.MiddleCenter, bRad);
+			BtnDanger.fontStyle = FontStyle.Bold;
 
-			BtnDisabled = Base(_texOff, (int)(13f * Scale), new Color(0.5f, 0.55f, 0.6f, 0.5f), TextAnchor.MiddleLeft);
-			BtnDisabled.padding.left = (int)(10f * Scale);
+			BtnDisabled = Base(_texBtnDisabled, (int)(13f * Scale), new Color(0.54f, 0.47f, 0.40f, 0.6f), TextAnchor.MiddleCenter, bRad);
 			BtnDisabled.richText = true;
 
-			Label = Base(null, (int)(12f * Scale), ColText, TextAnchor.MiddleLeft);
+			Label = Base(null, (int)(13f * Scale), ColInk, TextAnchor.MiddleLeft);
+			Label.fontStyle = FontStyle.Bold;
 			Label.richText = true;
-			Small = Base(null, (int)(11f * Scale), ColDim, TextAnchor.MiddleLeft);
+			Small = Base(null, (int)(11f * Scale), ColMuted, TextAnchor.MiddleLeft);
 			Small.richText = true;
-			Dim = Base(null, (int)(12f * Scale), ColDim, TextAnchor.MiddleLeft);
+			Dim = Base(null, (int)(12f * Scale), ColMuted, TextAnchor.MiddleLeft);
 			Dim.richText = true;
-			Section = Base(null, (int)(12f * Scale), ColAccent, TextAnchor.MiddleLeft);
+			Section = Base(null, (int)(12f * Scale), ColInk, TextAnchor.MiddleLeft);
 			Section.fontStyle = FontStyle.Bold;
-			Value = Base(null, (int)(13f * Scale), ColGold, TextAnchor.MiddleRight);
+			Value = Base(null, (int)(14f * Scale), ColCoral, TextAnchor.MiddleRight);
 			Value.fontStyle = FontStyle.Bold;
 
-			Field = Base(_texField, (int)(13f * Scale), ColText, TextAnchor.MiddleLeft, Mathf.Min(6, rad));
-			Field.padding.left = (int)(8f * Scale);
+			Field = Base(_texField, (int)(14f * Scale), ColInk, TextAnchor.MiddleLeft, (int)(12f * Scale));
+			Field.padding.left = (int)(10f * Scale);
+			Field.fontStyle = FontStyle.Bold;
 
-			Footer = Base(null, (int)(11f * Scale), ColDim, TextAnchor.MiddleLeft);
+			Footer = Base(null, (int)(11f * Scale), ColMuted, TextAnchor.MiddleLeft);
 
-			Box = Base(_texPanel, (int)(12f * Scale), ColText, TextAnchor.MiddleLeft, Mathf.Min(8, rad));
+			Box = Base(_texCard, (int)(12f * Scale), ColInk, TextAnchor.MiddleLeft, rad);
+
+			// 游戏内 overlay：深色画面上的浅色文字（半透明黑底由调用方先画）
+			OverlayLabel = Base(null, (int)(12f * Scale), ColOverlayText, TextAnchor.MiddleLeft);
+			OverlayLabel.richText = true;
+			OverlaySmall = Base(null, (int)(11f * Scale), ColOverlayText, TextAnchor.MiddleLeft);
+			OverlayValue = Base(null, (int)(30f * Scale), ColOverlayGold, TextAnchor.MiddleRight);
+			OverlayValue.fontStyle = FontStyle.Bold;
+			OverlayBox = new GUIStyle();
+			OverlayBox.normal.background = MakeSolid(new Color(0f, 0f, 0f, 0.55f));
 
 			_ready = true;
 		}
 
+		private static Texture2D MakeSolid(Color c)
+		{
+			if (_texSolid == null)
+			{
+				_texSolid = new Texture2D(4, 4, TextureFormat.ARGB32, false);
+				Color[] px = new Color[16];
+				for (int i = 0; i < 16; i++)
+				{
+					px[i] = Color.white;
+				}
+				_texSolid.SetPixels(px);
+				_texSolid.Apply(false, false);
+				_texSolid.name = "ui_solid";
+			}
+			GUI.color = c;
+			return _texSolid;
+		}
+
+		/// <summary>画完 MakeSolid 底板后调用，恢复染色。</summary>
+		internal static void ClearTint()
+		{
+			GUI.color = Color.white;
+		}
+
 		/// <summary>
 		/// 从零构建样式，绝不继承 GUI.skin（游戏可能带自定义皮肤，
-		/// 其 onFocused 等未覆盖状态会在窗口获得焦点/点击后被绘制——之前点击后出现
-		/// 白色光斑覆盖菜单就是这个原因）。
+		/// 其 onFocused 等未覆盖状态会在窗口获得焦点/点击后被绘制）。
 		/// </summary>
 		private static GUIStyle Base(Texture2D bg, int fontSize, Color color, TextAnchor anchor, int radius = 0)
 		{
@@ -260,9 +334,8 @@ namespace HTF.CheatMenu
 		}
 
 		/// <summary>
-		/// 生成圆角纹理（一次性成本）。radius=32 得到胶囊/圆形。
-		/// outline: 1px 描边色（可为 null）；topOnly: 只圆上面两角（标题栏用）；
-		/// edgeFade: 从边缘向内 alpha 渐显的像素数（窗口阴影用）。
+		/// 生成圆角纹理。radius=32 得到胶囊/圆形；outline 墨水描边；
+		/// topOnly 只圆上面两角；edgeFade 边缘渐隐（阴影用）。
 		/// </summary>
 		private static Texture2D RoundedShape(Color fill, int radius, Color? outline, int outlineWidth, bool topOnly, float edgeFade)
 		{
@@ -278,7 +351,6 @@ namespace HTF.CheatMenu
 					float cx = Mathf.Min(x + 0.5f, size - x - 0.5f);
 					float cyTop = y + 0.5f;
 					float cyBot = size - y - 0.5f;
-					// s = 到形状边缘的有符号距离（内部为正）
 					float sEdge = Mathf.Min(cx, Mathf.Min(cyTop, cyBot));
 					float s;
 					bool corner = cx < r && (topOnly ? cyTop < r : (cyTop < r || cyBot < r));
@@ -313,45 +385,6 @@ namespace HTF.CheatMenu
 						c = new Color(o.r, o.g, o.b, Mathf.Max(o.a, a));
 					}
 					c.a = a;
-					px[y * size + x] = c;
-				}
-			}
-			t.SetPixels(px);
-			t.Apply(false, false);
-			t.wrapMode = TextureWrapMode.Clamp;
-			return t;
-		}
-
-		/// <summary>标题栏：青色向右渐隐的水平渐变，只圆上面两角。</summary>
-		private static Texture2D GradientHeader(int radius)
-		{
-			int size = 64;
-			Texture2D t = new Texture2D(size, size, TextureFormat.ARGB32, false);
-			t.name = "ui_header";
-			Color[] px = new Color[size * size];
-			Color a = new Color(ColAccent.r, ColAccent.g, ColAccent.b, 0.30f);
-			Color b = new Color(ColPanel.r, ColPanel.g, ColPanel.b, 1f);
-			for (int y = 0; y < size; y++)
-			{
-				for (int x = 0; x < size; x++)
-				{
-					float cx = Mathf.Min(x + 0.5f, size - x - 0.5f);
-					float cy = y + 0.5f;
-					float s;
-					if (cx < radius && cy < radius)
-					{
-						float dx = radius - cx;
-						float dy = radius - cy;
-						s = radius - Mathf.Sqrt(dx * dx + dy * dy);
-					}
-					else
-					{
-						s = Mathf.Min(cx, cy);
-					}
-					float alpha = s <= 0f ? 0f : Mathf.Clamp01(s + 0.5f);
-					float tParam = x / (float)(size - 1);
-					Color c = Color.Lerp(a, b, tParam);
-					c.a *= alpha;
 					px[y * size + x] = c;
 				}
 			}
@@ -396,8 +429,22 @@ namespace HTF.CheatMenu
 		internal static float ContentWidth => _width;
 
 		// ---- 控件 ----
+
+		/// <summary>糖果硬阴影：在 rect 右下偏移处画一层墨色圆角。</summary>
+		internal static void HardShadow(Rect r, float offset)
+		{
+			Color old = GUI.color;
+			GUI.color = new Color(1f, 1f, 1f, 0.8f);
+			GUI.DrawTexture(new Rect(r.x + offset, r.y + offset, r.width, r.height), _texShadowInk);
+			GUI.color = old;
+		}
+
 		internal static bool Button(GUIContent c, GUIStyle style = null)
 		{
+			if (style == null || style == Btn || style == BtnGhost || style == BtnPrimary)
+			{
+				HardShadow(_cur, 3.5f * Scale);
+			}
 			return GUI.Button(_cur, c, style ?? Btn);
 		}
 
@@ -409,10 +456,10 @@ namespace HTF.CheatMenu
 				GUI.Button(_cur, c, BtnDisabled);
 				return false;
 			}
-			return GUI.Button(_cur, c, Btn);
+			return Button(c, Btn);
 		}
 
-		/// <summary>主操作按钮（青色实底、居中）。</summary>
+		/// <summary>主操作按钮（珊瑚实底，硬阴影）。</summary>
 		internal static bool Primary(GUIContent c, bool interactable = true)
 		{
 			if (!interactable)
@@ -420,10 +467,10 @@ namespace HTF.CheatMenu
 				GUI.Button(_cur, c, BtnDisabled);
 				return false;
 			}
-			return GUI.Button(_cur, c, BtnPrimary);
+			return Button(c, BtnPrimary);
 		}
 
-		/// <summary>次操作按钮（描边幽灵、居中）。</summary>
+		/// <summary>次操作按钮（白底描边）。</summary>
 		internal static bool Ghost(GUIContent c, bool interactable = true)
 		{
 			if (!interactable)
@@ -431,11 +478,11 @@ namespace HTF.CheatMenu
 				GUI.Button(_cur, c, BtnDisabled);
 				return false;
 			}
-			return GUI.Button(_cur, c, BtnGhost);
+			return Button(c, BtnGhost);
 		}
 
 		/// <summary>
-		/// 开关行：整行可点，标签居左，右侧 iOS 式滑块开关。返回是否被点击。
+		/// 开关行：整行可点，标签居左，右侧糖果滑块。返回是否被点击。
 		/// </summary>
 		internal static bool ToggleRow(GUIContent label, bool on, bool interactable = true)
 		{
@@ -445,30 +492,30 @@ namespace HTF.CheatMenu
 			{
 				GUI.DrawTexture(row, _texRowHover);
 			}
-			Rect labelRect = new Rect(row.x + 10f * Scale, row.y, row.width - 70f * Scale, row.height);
-			GUI.Label(labelRect, label, interactable ? Label : BtnDisabled);
-			Rect sw = new Rect(row.xMax - (38f + 10f) * Scale, row.y + (row.height - 16f * Scale) * 0.5f, 38f * Scale, 16f * Scale);
+			Rect labelRect = new Rect(row.x + 10f * Scale, row.y, row.width - 76f * Scale, row.height);
+			GUI.Label(labelRect, label, interactable ? Label : Dim);
+			Rect sw = new Rect(row.xMax - (44f + 10f) * Scale, row.y + (row.height - 19f * Scale) * 0.5f, 44f * Scale, 19f * Scale);
 			Switch(sw, on);
 			return interactable && GUI.Button(row, GUIContent.none, GUIStyle.none);
 		}
 
-		/// <summary>iOS 式滑块开关。</summary>
+		/// <summary>糖果滑块开关（墨水描边 + 薄荷开启态）。</summary>
 		internal static void Switch(Rect r, bool on)
 		{
-			GUI.color = on ? Color.white : new Color(1f, 1f, 1f, 0.55f);
-			GUI.DrawTexture(r, on ? _texPillOn : _texPillOff);
-			GUI.color = Color.white;
-			float k = 12f * Scale;
+			HardShadow(r, 2.5f * Scale);
+			GUI.DrawTexture(r, on ? _texSwitchOn : _texSwitchOff);
+			float k = 15f * Scale;
 			Rect knob = new Rect(on ? r.xMax - k - 2f * Scale : r.x + 2f * Scale, r.y + (r.height - k) * 0.5f, k, k);
 			GUI.DrawTexture(knob, _texKnob);
 		}
 
-		/// <summary>小圆点（主机状态指示等）。</summary>
+		/// <summary>小圆点。</summary>
 		internal static void Dot(Rect r, Color color)
 		{
+			Color old = GUI.color;
 			GUI.color = color;
 			GUI.DrawTexture(r, _texKnob);
-			GUI.color = Color.white;
+			GUI.color = old;
 		}
 
 		internal static void LabelRow(GUIContent c, GUIStyle style = null)
@@ -478,12 +525,11 @@ namespace HTF.CheatMenu
 
 		internal static void SectionRow(GUIContent c)
 		{
-			// 分节标题带一条下划线
 			GUI.Label(_cur, c, Section);
 			float y = _cur.y + _cur.height - 2f * Scale;
 			Color old = GUI.color;
-			GUI.color = new Color(ColAccent.r, ColAccent.g, ColAccent.b, 0.45f);
-			GUI.DrawTexture(new Rect(_cur.x, y, _cur.width, 1.5f * Scale), _texWhite);
+			GUI.color = new Color(ColCoral.r, ColCoral.g, ColCoral.b, 0.8f);
+			GUI.DrawTexture(new Rect(_cur.x, y, _cur.width, 2f * Scale), _texWhite);
 			GUI.color = old;
 		}
 
@@ -508,17 +554,10 @@ namespace HTF.CheatMenu
 			return r;
 		}
 
-		/// <summary>在指定矩形外扩 delta 后绘制窗口阴影（多圈渐淡）。</summary>
-		internal static void DrawShadow(Rect r, float delta)
+		/// <summary>标签牌纹理（按页签配色）。</summary>
+		internal static Texture2D TagTex(int tab)
 		{
-			for (int i = 3; i >= 1; i--)
-			{
-				float d = delta * (0.5f + 0.5f * i);
-				Color old = GUI.color;
-				GUI.color = new Color(1f, 1f, 1f, 0.28f * (4 - i) / 3f);
-				GUI.DrawTexture(new Rect(r.x - d, r.y - d, r.width + d * 2f, r.height + d * 2f), _texShadow);
-				GUI.color = old;
-			}
+			return _texTags[tab];
 		}
 
 		/// <summary>主机角标富文本后缀（初始化期拼接一次）。</summary>
